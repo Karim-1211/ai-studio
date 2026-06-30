@@ -228,21 +228,21 @@ if ANTHROPIC_MODEL not in ANTHROPIC_MODELS:
     ANTHROPIC_MODELS.insert(0, ANTHROPIC_MODEL)
 
 EMBEDDING_PROVIDER = (
-    os.getenv("EMBEDDING_PROVIDER", AI_PROVIDER)
+    os.getenv("EMBEDDING_PROVIDER", "gemini" if AI_PROVIDER == "gemini" else "ollama")
     .strip()
     .lower()
 )
 
-if EMBEDDING_PROVIDER == "claude":
-    EMBEDDING_PROVIDER = "anthropic"
+if EMBEDDING_PROVIDER not in {"gemini", "ollama"}:
+    EMBEDDING_PROVIDER = "gemini" if AI_PROVIDER == "gemini" else "ollama"
 
-if EMBEDDING_PROVIDER not in {"ollama", "gemini", "openai", "openrouter", "anthropic"}:
-    EMBEDDING_PROVIDER = AI_PROVIDER
-
-EMBEDDING_MODEL = os.getenv(
-    "EMBEDDING_MODEL",
-    "text-embedding-004" if EMBEDDING_PROVIDER == "gemini" else "embeddinggemma"
-).strip()
+EMBEDDING_MODEL = (
+    os.getenv(
+        "EMBEDDING_MODEL",
+        "gemini-embedding-001" if EMBEDDING_PROVIDER == "gemini" else "embeddinggemma"
+    )
+    .strip()
+)
 
 VISION_MODEL = (
     os.getenv("VISION_MODEL", "").strip()
@@ -773,14 +773,13 @@ class BaseConfig:
     GEMINI_BASE_URL = GEMINI_BASE_URL
     GEMINI_MODEL = GEMINI_MODEL
     GEMINI_MODELS = GEMINI_MODELS
+    EMBEDDING_PROVIDER = EMBEDDING_PROVIDER
+    EMBEDDING_MODEL = EMBEDDING_MODEL
     ANTHROPIC_API_KEY = ANTHROPIC_API_KEY
     ANTHROPIC_BASE_URL = ANTHROPIC_BASE_URL
     ANTHROPIC_VERSION = ANTHROPIC_VERSION
     ANTHROPIC_MODEL = ANTHROPIC_MODEL
     ANTHROPIC_MODELS = ANTHROPIC_MODELS
-
-    EMBEDDING_PROVIDER = EMBEDDING_PROVIDER
-    EMBEDDING_MODEL = EMBEDDING_MODEL
 
     RAG_TOP_K = RAG_TOP_K
     RAG_CHUNK_SIZE = RAG_CHUNK_SIZE
