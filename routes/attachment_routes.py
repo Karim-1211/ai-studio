@@ -228,7 +228,7 @@ def upload_message_attachment(chat_id):
         "attachment": attachment_to_dict(attachment),
         "warning": "embedding_skipped",
     }, 201
-    
+
     except Exception as error:
         current_app.logger.exception("attachment_upload_failed")
         return handle_attachment_failure(
