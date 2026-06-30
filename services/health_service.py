@@ -261,26 +261,33 @@ def get_system_health(config):
         or "ollama"
     ).lower()
 
+    embedding_provider = (
+        os.getenv("EMBEDDING_PROVIDER")
+        or config.get("EMBEDDING_PROVIDER")
+        or ai_provider
+    ).lower()
+
+    components = {
+        "database": database,
+    }
+
     if ai_provider == "ollama":
-        ollama = check_ollama(
+        ai = check_ollama(
             config.get(
                 "HEALTH_HTTP_TIMEOUT",
                 3.0
             )
         )
-        ai = ollama
-        embedding = check_embedding_model(ollama)
+        components["ollama"] = ai
     else:
         api_key_name = {
             "gemini": "GEMINI_API_KEY",
             "openai": "OPENAI_API_KEY",
             "openrouter": "OPENROUTER_API_KEY",
-            "anthropic": "ANTHROPIC_API_KEY"
+            "anthropic": "ANTHROPIC_API_KEY",
         }.get(ai_provider)
 
-        api_key_configured = bool(
-            api_key_name and os.getenv(api_key_name)
-        )
+        api_key_configured = bool(api_key_name and os.getenv(api_key_name))
 
         ai = _component(
             api_key_configured,
@@ -290,41 +297,58 @@ def get_system_health(config):
                 if api_key_configured
                 else f"{api_key_name or 'AI provider'} is not configured."
             ),
-            details={
-                "provider": ai_provider
-            }
+            details={"provider": ai_provider}
         )
 
+    components["ai"] = ai
+
+    if embedding_provider == "ollama":
+        ollama_component = components.get("ollama") or check_ollama(
+            config.get("HEALTH_HTTP_TIMEOUT", 3.0)
+        )
+        components.setdefault("ollama", ollama_component)
+        embedding = check_embedding_model(ollama_component)
+    else:
+        embedding_key_name = {
+            "gemini": "GEMINI_API_KEY",
+            "openai": "OPENAI_API_KEY",
+            "openrouter": "OPENROUTER_API_KEY",
+            "anthropic": "ANTHROPIC_API_KEY",
+        }.get(embedding_provider)
+        embedding_key_configured = bool(
+            embedding_key_name and os.getenv(embedding_key_name)
+        )
         embedding = _component(
-            True,
-            "disabled",
-            "Local embedding model check is skipped for cloud AI providers."
+            embedding_key_configured,
+            "ready" if embedding_key_configured else "unavailable",
+            (
+                f"{embedding_provider.title()} embeddings are configured."
+                if embedding_key_configured
+                else f"{embedding_key_name or 'Embedding provider'} is not configured."
+            ),
+            details={
+                "provider": embedding_provider,
+                "model": os.getenv("EMBEDDING_MODEL") or config.get("EMBEDDING_MODEL")
+            }
         )
 
     ocr = check_ocr(config)
     uploads = check_upload_folder(config["UPLOAD_FOLDER"])
 
-    components = {
-        "database": database,
-        "ai": ai,
+    components.update({
         "embedding": embedding,
         "ocr": ocr,
-        "uploads": uploads
-    }
-
-    if ai_provider == "ollama":
-        components["ollama"] = ai
+        "uploads": uploads,
+    })
 
     essential_ready = all([
         database["ok"],
         ai["ok"],
-        uploads["ok"]
+        embedding["ok"],
+        uploads["ok"],
     ])
 
-    optional_ready = all([
-        embedding["ok"],
-        ocr["ok"]
-    ])
+    optional_ready = ocr["ok"]
 
     if essential_ready and optional_ready:
         overall = "ready"
@@ -337,5 +361,6 @@ def get_system_health(config):
         "status": overall,
         "ready": essential_ready,
         "provider": ai_provider,
+        "embedding_provider": embedding_provider,
         "components": components
     }

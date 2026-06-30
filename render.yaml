@@ -35,19 +35,15 @@ services:
       - key: AI_PROVIDER
         value: gemini
       - key: GEMINI_MODEL
-        value: gemini-1.5-flash
+        value: gemini-2.5-flash
       - key: GEMINI_MODELS
-        value: gemini-1.5-flash
+        value: gemini-2.5-flash,gemini-1.5-flash
       - key: GEMINI_API_KEY
         sync: false
-      - key: OPENAI_API_KEY
-        sync: false
-      - key: OPENROUTER_API_KEY
-        sync: false
-      - key: ANTHROPIC_API_KEY
-        sync: false
+      - key: EMBEDDING_PROVIDER
+        value: gemini
       - key: EMBEDDING_MODEL
-        value: embeddinggemma
+        value: text-embedding-004
       - key: OCR_ENABLED
         value: true
       - key: TESSERACT_CMD

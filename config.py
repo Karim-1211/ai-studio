@@ -227,10 +227,22 @@ if GEMINI_MODEL not in GEMINI_MODELS:
 if ANTHROPIC_MODEL not in ANTHROPIC_MODELS:
     ANTHROPIC_MODELS.insert(0, ANTHROPIC_MODEL)
 
+EMBEDDING_PROVIDER = (
+    os.getenv("EMBEDDING_PROVIDER", AI_PROVIDER)
+    .strip()
+    .lower()
+)
+
+if EMBEDDING_PROVIDER == "claude":
+    EMBEDDING_PROVIDER = "anthropic"
+
+if EMBEDDING_PROVIDER not in {"ollama", "gemini", "openai", "openrouter", "anthropic"}:
+    EMBEDDING_PROVIDER = AI_PROVIDER
+
 EMBEDDING_MODEL = os.getenv(
     "EMBEDDING_MODEL",
-    "embeddinggemma"
-)
+    "text-embedding-004" if EMBEDDING_PROVIDER == "gemini" else "embeddinggemma"
+).strip()
 
 VISION_MODEL = (
     os.getenv("VISION_MODEL", "").strip()
@@ -766,6 +778,9 @@ class BaseConfig:
     ANTHROPIC_VERSION = ANTHROPIC_VERSION
     ANTHROPIC_MODEL = ANTHROPIC_MODEL
     ANTHROPIC_MODELS = ANTHROPIC_MODELS
+
+    EMBEDDING_PROVIDER = EMBEDDING_PROVIDER
+    EMBEDDING_MODEL = EMBEDDING_MODEL
 
     RAG_TOP_K = RAG_TOP_K
     RAG_CHUNK_SIZE = RAG_CHUNK_SIZE

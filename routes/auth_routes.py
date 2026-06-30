@@ -121,6 +121,13 @@ def register():
                 is_admin=first_owner_setup,
             )
             login_user(user, fresh=True)
+            record_audit(
+                "auth.first_owner_created" if first_owner_setup else "auth.register",
+                actor_user_id=user.id,
+                target_user_id=user.id,
+                entity_type="user",
+                entity_id=user.id,
+            )
             return redirect(url_for("home"))
         except AuthenticationError as error:
             db.session.rollback()

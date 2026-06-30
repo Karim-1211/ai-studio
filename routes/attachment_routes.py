@@ -127,9 +127,7 @@ def upload_message_attachment(chat_id):
             )
         )
 
-        pending_total_bytes = sum(
-            item.file_size for item in pending_attachments
-        )
+        pending_total_bytes = sum(item.file_size for item in pending_attachments)
 
         if pending_total_bytes + saved_file["file_size"] > maximum_total_bytes:
             raise AttachmentLimitError(
@@ -164,7 +162,6 @@ def upload_message_attachment(chat_id):
                 extension,
                 ocr_settings=current_app.config
             )
-
             extracted_text = extraction_result.get("text", "")
 
         except DocumentProcessingError:
@@ -178,6 +175,7 @@ def upload_message_attachment(chat_id):
             }
 
         chunks = []
+        embedding_warning = None
 
         if extracted_text:
             chunks = split_text_into_chunks(
@@ -189,7 +187,6 @@ def upload_message_attachment(chat_id):
         if chunks:
             try:
                 embeddings = generate_embeddings(chunks)
-
                 create_message_attachment_chunks(
                     attachment_id=attachment.id,
                     chunks=chunks,
@@ -204,7 +201,7 @@ def upload_message_attachment(chat_id):
                         "reason": str(error),
                     },
                 )
-
+                embedding_warning = str(error)
                 chunks = []
 
         attachment = update_message_attachment_status(
@@ -218,17 +215,21 @@ def upload_message_attachment(chat_id):
         )
 
         message = "Attachment is ready."
-
-        if extracted_text and not chunks:
+        if embedding_warning:
             message = (
                 "Attachment uploaded. Text was extracted, but knowledge search "
-                "is unavailable because local embeddings are not configured."
+                "is unavailable because embeddings could not be generated."
             )
 
-        return {
+        response = {
             "message": message,
             "attachment": attachment_to_dict(attachment)
-        }, 201
+        }
+
+        if embedding_warning:
+            response["warning"] = "embedding_skipped"
+
+        return response, 201
 
     except AttachmentLimitError as error:
         return handle_attachment_failure(
@@ -250,7 +251,6 @@ def upload_message_attachment(chat_id):
 
     except Exception as error:
         current_app.logger.exception("attachment_upload_failed")
-
         return handle_attachment_failure(
             error,
             attachment,
@@ -313,7 +313,6 @@ def remove_message_attachment(attachment_id):
         )
 
     delete_attachment_with_file(attachment)
-
     return {"message": "Attachment removed."}
 
 
