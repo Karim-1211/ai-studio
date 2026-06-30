@@ -17,9 +17,7 @@ services:
       - key: SECRET_KEY
         generateValue: true
       - key: DATABASE_URL
-        fromDatabase:
-          name: ai-studio-db
-          property: connectionString
+        sync: false
       - key: AUTH_REQUIRED
         value: true
       - key: ALLOW_REGISTRATION
@@ -56,9 +54,3 @@ services:
         value: /usr/bin/tesseract
       - key: RATE_LIMIT_ENABLED
         value: true
-
-databases:
-  - name: ai-studio-db
-    plan: free
-    databaseName: ai_studio_db
-    user: ai_studio
