@@ -171,8 +171,8 @@ GEMINI_BASE_URL = (
 )
 
 GEMINI_MODEL = (
-    os.getenv("GEMINI_MODEL", "gemini-1.5-flash").strip()
-    or "gemini-1.5-flash"
+    os.getenv("GEMINI_MODEL", "gemini-2.5-flash").strip()
+    or "gemini-2.5-flash"
 )
 
 GEMINI_MODELS = [
@@ -228,20 +228,27 @@ if ANTHROPIC_MODEL not in ANTHROPIC_MODELS:
     ANTHROPIC_MODELS.insert(0, ANTHROPIC_MODEL)
 
 EMBEDDING_PROVIDER = (
-    os.getenv("EMBEDDING_PROVIDER", "gemini" if AI_PROVIDER == "gemini" else "ollama")
+    os.getenv("EMBEDDING_PROVIDER", AI_PROVIDER)
     .strip()
     .lower()
 )
 
-if EMBEDDING_PROVIDER not in {"gemini", "ollama"}:
+if EMBEDDING_PROVIDER == "cloud":
+    EMBEDDING_PROVIDER = "gemini"
+
+if EMBEDDING_PROVIDER not in {"ollama", "gemini"}:
     EMBEDDING_PROVIDER = "gemini" if AI_PROVIDER == "gemini" else "ollama"
 
-EMBEDDING_MODEL = (
-    os.getenv(
-        "EMBEDDING_MODEL",
-        "gemini-embedding-001" if EMBEDDING_PROVIDER == "gemini" else "embeddinggemma"
-    )
-    .strip()
+EMBEDDING_MODEL = os.getenv(
+    "EMBEDDING_MODEL",
+    "gemini-embedding-001" if EMBEDDING_PROVIDER == "gemini" else "embeddinggemma"
+).strip()
+
+GEMINI_EMBEDDING_DIMENSIONS = read_integer_environment(
+    "GEMINI_EMBEDDING_DIMENSIONS",
+    default=768,
+    minimum=128,
+    maximum=3072
 )
 
 VISION_MODEL = (
@@ -773,8 +780,6 @@ class BaseConfig:
     GEMINI_BASE_URL = GEMINI_BASE_URL
     GEMINI_MODEL = GEMINI_MODEL
     GEMINI_MODELS = GEMINI_MODELS
-    EMBEDDING_PROVIDER = EMBEDDING_PROVIDER
-    EMBEDDING_MODEL = EMBEDDING_MODEL
     ANTHROPIC_API_KEY = ANTHROPIC_API_KEY
     ANTHROPIC_BASE_URL = ANTHROPIC_BASE_URL
     ANTHROPIC_VERSION = ANTHROPIC_VERSION

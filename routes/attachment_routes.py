@@ -21,7 +21,6 @@ from services.deletion_service import delete_attachment_with_file
 from services.document_service import (
     DocumentProcessingError,
     extract_text_from_file,
-    get_file_extension,
     is_allowed_file,
     save_uploaded_file,
     split_text_into_chunks
@@ -119,9 +118,7 @@ def upload_message_attachment(chat_id):
                 40 * 1024 * 1024
             )
         )
-        pending_total_bytes = sum(
-            item.file_size for item in pending_attachments
-        )
+        pending_total_bytes = sum(item.file_size for item in pending_attachments)
         if pending_total_bytes + saved_file["file_size"] > maximum_total_bytes:
             raise AttachmentLimitError(
                 "The pending attachments exceed the configured total size limit."
@@ -191,8 +188,12 @@ def upload_message_attachment(chat_id):
             page_count=int(extraction_result.get("pages_processed", 1))
         )
 
+        message = "Attachment is ready."
+        if not extracted_text and attachment_kind == "image":
+            message = "Image attachment is ready for Gemini vision analysis."
+
         return {
-            "message": "Attachment is ready.",
+            "message": message,
             "attachment": attachment_to_dict(attachment)
         }, 201
 

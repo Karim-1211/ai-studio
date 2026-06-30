@@ -9,7 +9,6 @@ from sqlalchemy import text
 from config import (
     AI_PROVIDER,
     EMBEDDING_MODEL,
-    GEMINI_API_KEY,
     OLLAMA_URL
 )
 
@@ -18,6 +17,7 @@ from database import db
 from services.document_service import (
     get_ocr_status
 )
+from services.embedding_service import get_embedding_status
 
 
 def _component(
@@ -254,115 +254,66 @@ def check_upload_folder(upload_folder):
         )
 
 
-def check_cloud_ai_provider():
-    provider = str(
+def check_ai_provider(config):
+    provider = (
         os.getenv("AI_PROVIDER")
         or AI_PROVIDER
         or "ollama"
     ).strip().lower()
 
-    if provider == "claude":
-        provider = "anthropic"
-
     if provider == "gemini":
-        configured = bool(GEMINI_API_KEY)
+        configured = bool(os.getenv("GEMINI_API_KEY"))
         return _component(
             configured,
             "ready" if configured else "unavailable",
-            (
-                "Gemini provider is configured."
-                if configured
-                else "GEMINI_API_KEY is not configured."
-            ),
+            "Gemini provider is configured." if configured else "GEMINI_API_KEY is not configured.",
             details={"provider": "gemini"}
         )
 
-    key_name = {
-        "openai": "OPENAI_API_KEY",
-        "openrouter": "OPENROUTER_API_KEY",
-        "anthropic": "ANTHROPIC_API_KEY"
-    }.get(provider)
+    if provider == "ollama":
+        return check_ollama(config.get("HEALTH_HTTP_TIMEOUT", 3.0))
 
-    configured = bool(key_name and os.getenv(key_name))
+    key_name = f"{provider.upper()}_API_KEY"
+    configured = bool(os.getenv(key_name))
     return _component(
         configured,
         "ready" if configured else "unavailable",
-        (
-            f"{provider.title()} provider is configured."
-            if configured
-            else f"{key_name or 'AI provider'} is not configured."
-        ),
+        f"{provider.title()} provider is configured." if configured else f"{key_name} is not configured.",
         details={"provider": provider}
     )
 
 
-def check_cloud_embedding_provider():
-    provider = str(
-        os.getenv("EMBEDDING_PROVIDER")
-        or ("gemini" if str(AI_PROVIDER).lower() == "gemini" else "ollama")
-    ).strip().lower()
-
-    if provider == "gemini":
-        configured = bool(GEMINI_API_KEY)
-        return _component(
-            configured,
-            "ready" if configured else "unavailable",
-            (
-                f"Gemini embeddings are configured with model '{EMBEDDING_MODEL}'."
-                if configured
-                else "GEMINI_API_KEY is required for Gemini embeddings."
-            ),
-            details={
-                "provider": "gemini",
-                "model": EMBEDDING_MODEL
-            }
-        )
-
-    return None
+def check_embeddings():
+    status = get_embedding_status()
+    return _component(
+        status.get("ok"),
+        "ready" if status.get("ok") else "unavailable",
+        status.get("message", "Embedding provider status checked."),
+        details={
+            "provider": status.get("provider"),
+            "model": status.get("model"),
+            "dimensions": status.get("dimensions"),
+        }
+    )
 
 
 def get_system_health(config):
     database = check_database()
-
-    ai_provider = str(
-        os.getenv("AI_PROVIDER")
-        or AI_PROVIDER
-        or "ollama"
-    ).strip().lower()
-
-    if ai_provider == "ollama":
-        ai = check_ollama(
-            config.get(
-                "HEALTH_HTTP_TIMEOUT",
-                3.0
-            )
-        )
-        embedding = check_embedding_model(ai)
-        components = {
-            "database": database,
-            "ollama": ai,
-            "ai": ai,
-            "embedding": embedding,
-        }
-    else:
-        ai = check_cloud_ai_provider()
-        embedding = check_cloud_embedding_provider() or _component(
-            True,
-            "ready",
-            "Cloud embedding provider is configured.",
-        )
-        components = {
-            "database": database,
-            "ai": ai,
-            "embedding": embedding,
-        }
-
+    ai = check_ai_provider(config)
+    embedding = check_embeddings()
     ocr = check_ocr(config)
     uploads = check_upload_folder(config["UPLOAD_FOLDER"])
-    components.update({
+
+    components = {
+        "database": database,
+        "ai": ai,
+        "embedding": embedding,
         "ocr": ocr,
         "uploads": uploads
-    })
+    }
+
+    if (os.getenv("AI_PROVIDER") or AI_PROVIDER or "ollama").strip().lower() == "ollama":
+        components["ollama"] = ai
 
     essential_ready = all([
         database["ok"],
@@ -383,6 +334,6 @@ def get_system_health(config):
     return {
         "status": overall,
         "ready": essential_ready,
-        "provider": ai_provider,
+        "provider": (os.getenv("AI_PROVIDER") or AI_PROVIDER or "ollama").strip().lower(),
         "components": components
     }

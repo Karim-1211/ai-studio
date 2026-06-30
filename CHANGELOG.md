@@ -21,11 +21,3 @@
 
 ### Security
 - Clean release package excludes `.env`, logs, cache files, generated uploads, and old nested workspace copies.
-
-## AI Studio Cloud Edition v1.1
-
-- Added Gemini embedding provider for Render cloud deployments.
-- Changed cloud embedding default from local Ollama `embeddinggemma` to `gemini-embedding-001`.
-- Updated health checks so Gemini deployments no longer depend on Ollama availability.
-- Updated Render defaults for Gemini chat and Gemini embeddings.
-- No database migration required.
