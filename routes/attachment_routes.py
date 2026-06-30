@@ -209,9 +209,26 @@ def upload_message_attachment(chat_id):
             "attachment_processing_failed"
         )
     except EmbeddingServiceError as error:
-        return handle_attachment_failure(
-            error, attachment, saved_file, 502, "attachment_embedding_failed"
-        )
+    current_app.logger.warning(
+        "attachment_embedding_skipped",
+        extra={
+            "attachment_id": getattr(attachment, "id", None),
+            "reason": str(error),
+        },
+    )
+
+    attachment = update_message_attachment_status(
+        attachment,
+        status="ready",
+        error_message=None,
+    )
+
+    return {
+        "message": "Attachment uploaded. Knowledge search is unavailable because local embeddings are not configured.",
+        "attachment": attachment_to_dict(attachment),
+        "warning": "embedding_skipped",
+    }, 201
+    
     except Exception as error:
         current_app.logger.exception("attachment_upload_failed")
         return handle_attachment_failure(
