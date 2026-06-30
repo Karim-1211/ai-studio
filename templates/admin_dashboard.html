@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="csrf-token" content="{{ csrf_token() }}">
+  <title>Admin dashboard · AI Studio</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='auth.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='admin.css') }}">
+</head>
+<body class="admin-page">
+<a class="skip-link" href="#adminMain">Skip to dashboard content</a>
+<main class="admin-shell" id="adminMain" tabindex="-1">
+  <header class="admin-header">
+    <div>
+      <span class="admin-kicker">Operations workspace</span>
+      <h1>Admin dashboard</h1>
+      <p>Usage, reliability, storage, health, and security activity.</p>
+    </div>
+    <div class="admin-header-actions">
+      <label>
+        <span>Period</span>
+        <select id="adminRange" aria-label="Analytics period">
+          <option value="7">Last 7 days</option>
+          <option value="30" selected>Last 30 days</option>
+          <option value="90">Last 90 days</option>
+          <option value="365">Last year</option>
+        </select>
+      </label>
+      <button id="adminRefreshButton" type="button">Refresh</button>
+      <a href="{{ url_for('auth.admin_users') }}">Manage users</a>
+      <a href="{{ url_for('home') }}">Back to AI Studio</a>
+    </div>
+  </header>
+
+  <p id="adminStatus" class="admin-live-status" aria-live="polite">Loading analytics…</p>
+
+  <section class="admin-summary-grid" aria-label="System summary">
+    <article><span>Active users</span><strong id="adminUsersValue">—</strong><small>active / total</small></article>
+    <article><span>Chats</span><strong id="adminChatsValue">—</strong><small>all workspaces</small></article>
+    <article><span>Messages</span><strong id="adminMessagesValue">—</strong><small>saved conversations</small></article>
+    <article><span>Upload storage</span><strong id="adminStorageValue">—</strong><small>physical files</small></article>
+    <article><span>Failed requests</span><strong id="adminFailuresValue">—</strong><small>selected period</small></article>
+    <article><span>Model latency</span><strong id="adminLatencyValue">—</strong><small>average generation</small></article>
+    <article><span>Knowledge sources</span><strong id="adminSourcesValue">—</strong><small>indexed web / social</small></article>
+    <article><span>Orphan uploads</span><strong id="adminOrphansValue">—</strong><small>safe cleanup candidates</small></article>
+  </section>
+
+  <section class="admin-panel admin-panel-wide">
+    <div class="admin-panel-heading">
+      <div><h2>User activity and storage</h2><p>Per-user workspace usage. Storage excludes database overhead.</p></div>
+    </div>
+    <div class="admin-table-wrap" tabindex="0" aria-label="Scrollable user activity table">
+      <table class="admin-table">
+        <thead><tr><th>User</th><th>Status</th><th>Chats</th><th>Messages</th><th>Files</th><th>Web/Social</th><th>Storage</th><th>Access</th></tr></thead>
+        <tbody id="adminUsersBody"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <div class="admin-two-column">
+    <section class="admin-panel">
+      <div class="admin-panel-heading"><div><h2>Model usage</h2><p>Requests and average end-to-end generation time.</p></div></div>
+      <div id="adminModelUsage" class="admin-model-list"></div>
+    </section>
+
+    <section class="admin-panel">
+      <div class="admin-panel-heading"><div><h2>Storage cleanup</h2><p>Only files not referenced by the database are removable.</p></div></div>
+      <div class="admin-action-stack">
+        <button id="adminPreviewCleanup" type="button">Preview orphan uploads</button>
+        <button id="adminRunCleanup" class="admin-danger-button" type="button">Delete orphan uploads</button>
+        <label class="admin-inline-field">Keep telemetry for
+          <input id="adminRetentionDays" type="number" min="7" max="3650" value="90">
+          days
+        </label>
+        <button id="adminPurgeTelemetry" type="button">Purge old telemetry</button>
+      </div>
+      <p class="admin-note">Audit logs are not removed by telemetry cleanup.</p>
+    </section>
+  </div>
+
+  <div class="admin-two-column">
+    <section class="admin-panel">
+      <div class="admin-panel-heading"><div><h2>Recent failed requests</h2><p>HTTP errors recorded by the application.</p></div></div>
+      <div id="adminFailuresList" class="admin-event-list"></div>
+    </section>
+
+    <section class="admin-panel">
+      <div class="admin-panel-heading"><div><h2>Health history</h2><p>Sampled status changes and periodic checks.</p></div></div>
+      <div id="adminHealthList" class="admin-event-list"></div>
+    </section>
+  </div>
+
+  <section class="admin-panel admin-panel-wide">
+    <div class="admin-panel-heading"><div><h2>Audit log</h2><p>Important administrator and maintenance actions.</p></div></div>
+    <div id="adminAuditList" class="admin-event-list admin-audit-list"></div>
+  </section>
+</main>
+<script type="module" src="{{ url_for('static', filename='js/admin_dashboard.js') }}"></script>
+</body>
+</html>

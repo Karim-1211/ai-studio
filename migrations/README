@@ -1,0 +1,9 @@
+Single-database migration repository for AI Studio.
+
+Existing installations should run:
+
+    python -m flask --app app:app db stamp head
+
+Fresh databases should run:
+
+    python -m flask --app app:app db upgrade

@@ -1,0 +1,16 @@
+Flask
+Flask-WTF
+Flask-Login
+requests
+flask-sqlalchemy
+Flask-Migrate
+psycopg2-binary
+pypdf
+python-docx
+numpy
+python-dotenv
+Pillow
+pytesseract
+pypdfium2
+waitress
+beautifulsoup4

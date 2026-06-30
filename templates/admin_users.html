@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>User administration · AI Studio</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='auth.css') }}">
+</head>
+<body>
+<main class="page-card">
+  <header class="page-header">
+    <div><h1>User administration</h1><p>Create accounts and control local workspace access.</p></div>
+    <div class="user-actions"><a class="page-link" href="{{ url_for('admin.dashboard') }}">Admin dashboard</a><a class="page-link" href="{{ url_for('home') }}">Back to AI Studio</a></div>
+  </header>
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}<div class="flash-stack">{% for category, message in messages %}<div class="flash {{ category }}">{{ message }}</div>{% endfor %}</div>{% endif %}
+  {% endwith %}
+
+  <section class="settings-card" style="margin-bottom:22px">
+    <h2>Create user</h2>
+    <form class="auth-form" method="post">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <div class="settings-grid">
+        <label class="auth-field">Display name<input name="display_name" required maxlength="120"></label>
+        <label class="auth-field">Email<input type="email" name="email" required maxlength="320"></label>
+        <label class="auth-field">Temporary password<input type="password" name="password" required maxlength="128"></label>
+        <label class="auth-check"><input type="checkbox" name="is_admin"> Administrator</label>
+      </div>
+      <button class="auth-button" type="submit">Create user</button>
+    </form>
+  </section>
+
+  <section class="settings-card">
+    <h2>Accounts</h2>
+    <table class="user-table">
+      <thead><tr><th>User</th><th>Status</th><th>Role</th><th>Created</th><th>Actions</th></tr></thead>
+      <tbody>
+      {% for user in users %}
+        <tr>
+          <td><strong>{{ user.display_name }}</strong><br><small>{{ user.email }}</small></td>
+          <td><span class="badge {{ '' if user.active else 'off' }}">{{ 'Active' if user.active else 'Disabled' }}</span></td>
+          <td>{{ 'Administrator' if user.is_admin else 'Member' }}</td>
+          <td>{{ user.created_at.strftime('%Y-%m-%d') if user.created_at else '—' }}</td>
+          <td><div class="user-actions">
+            {% if user.id != current_user.id %}
+              <form method="post" action="{{ url_for('auth.toggle_user_active', user_id=user.id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="inline-button" type="submit">{{ 'Disable' if user.active else 'Enable' }}</button></form>
+              <form method="post" action="{{ url_for('auth.toggle_user_admin', user_id=user.id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="inline-button" type="submit">{{ 'Remove admin' if user.is_admin else 'Make admin' }}</button></form>
+              <form method="post" action="{{ url_for('auth.admin_delete_user', user_id=user.id) }}" onsubmit="return confirm('Delete this account and its workspace?');"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="danger-button" type="submit">Delete</button></form>
+            {% else %}<span class="badge">Current account</span>{% endif %}
+          </div></td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </section>
+</main>
+</body>
+</html>

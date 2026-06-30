@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="Sign in to your private AI Studio workspace.">
+  <title>{{ "Create account" if mode == "register" else "Sign in" }} · AI Studio</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='auth.css') }}">
+</head>
+<body>
+  <main class="auth-shell">
+    <section class="auth-card">
+      <aside class="auth-brand">
+        <div class="auth-brand-row">
+          <div class="auth-logo" aria-hidden="true">🤖</div>
+          <div><h1>AI Studio</h1><p>Private local AI workspace</p></div>
+        </div>
+        <div class="auth-promise">
+          <span class="auth-kicker">Local-first workspace</span>
+          <h2>Your chats and knowledge stay separated by account.</h2>
+          <p>Use Ollama, OCR, website knowledge, voice, and multimodal attachments in one secure workspace.</p>
+          <ul class="auth-points">
+            <li>Per-user chats and uploads</li>
+            <li>Secure password hashing and sessions</li>
+            <li>Administrator-controlled accounts</li>
+          </ul>
+        </div>
+      </aside>
+
+      <div class="auth-form-panel">
+        <span class="auth-kicker">{{ "New account" if mode == "register" else "Welcome back" }}</span>
+        <h2>{{ "Create your workspace" if mode == "register" else "Sign in to continue" }}</h2>
+        <p class="auth-subtitle">
+          {{ "Registration creates a private workspace." if mode == "register" else "Enter your local AI Studio account details." }}
+        </p>
+
+        {% with messages = get_flashed_messages(with_categories=true) %}
+          {% if messages %}
+            <div class="flash-stack">
+              {% for category, message in messages %}
+                <div class="flash {{ category }}">{{ message }}</div>
+              {% endfor %}
+            </div>
+          {% endif %}
+        {% endwith %}
+
+        {% if not has_users and mode == "login" %}
+          <div class="setup-note">
+            No owner account exists yet. In PowerShell, run:<br>
+            <strong>python -m flask --app app:create_app bootstrap-owner</strong>
+          </div>
+        {% endif %}
+
+        <form class="auth-form" method="post">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          {% if next_url %}<input type="hidden" name="next" value="{{ next_url }}">{% endif %}
+
+          {% if mode == "register" %}
+            <label class="auth-field">Display name
+              <input type="text" name="display_name" maxlength="120" required autocomplete="name">
+            </label>
+          {% endif %}
+
+          <label class="auth-field">Email address
+            <input type="email" name="email" maxlength="320" required autocomplete="email">
+          </label>
+
+          <label class="auth-field">Password
+            <input type="password" name="password" maxlength="128" required autocomplete="{{ 'new-password' if mode == 'register' else 'current-password' }}">
+          </label>
+
+          {% if mode == "register" %}
+            <label class="auth-field">Confirm password
+              <input type="password" name="password_confirmation" maxlength="128" required autocomplete="new-password">
+            </label>
+          {% else %}
+            <div class="auth-row">
+              <label class="auth-check"><input type="checkbox" name="remember"> Keep me signed in</label>
+            </div>
+          {% endif %}
+
+          <button class="auth-button" type="submit">
+            {{ "Create account" if mode == "register" else "Sign in" }}
+          </button>
+        </form>
+
+        {% if allow_registration %}
+          <p class="auth-alt">
+            {% if mode == "register" %}
+              Already registered? <a href="{{ url_for('auth.login') }}">Sign in</a>
+            {% else %}
+              Need an account? <a href="{{ url_for('auth.register') }}">Register</a>
+            {% endif %}
+          </p>
+        {% endif %}
+      </div>
+    </section>
+  </main>
+</body>
+</html>

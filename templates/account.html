@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Account settings · AI Studio</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='auth.css') }}">
+</head>
+<body>
+<main class="page-card">
+  <header class="page-header">
+    <div><h1>Account settings</h1><p>Manage your identity, password, and private workspace.</p></div>
+    <a class="page-link" href="{{ url_for('home') }}">Back to AI Studio</a>
+  </header>
+
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}<div class="flash-stack">{% for category, message in messages %}<div class="flash {{ category }}">{{ message }}</div>{% endfor %}</div>{% endif %}
+  {% endwith %}
+
+  <div class="settings-grid">
+    <section class="settings-card">
+      <h2>Profile</h2>
+      <form class="auth-form" method="post">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="action" value="profile">
+        <label class="auth-field">Display name<input name="display_name" value="{{ current_user.display_name }}" maxlength="120" required></label>
+        <label class="auth-field">Email<input type="email" name="email" value="{{ current_user.email }}" maxlength="320" required></label>
+        <button class="auth-button" type="submit">Save profile</button>
+      </form>
+    </section>
+
+    <section class="settings-card">
+      <h2>Change password</h2>
+      <form class="auth-form" method="post">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="action" value="password">
+        <label class="auth-field">Current password<input type="password" name="current_password" required autocomplete="current-password"></label>
+        <label class="auth-field">New password<input type="password" name="new_password" required autocomplete="new-password"></label>
+        <label class="auth-field">Confirm new password<input type="password" name="new_password_confirmation" required autocomplete="new-password"></label>
+        <button class="auth-button" type="submit">Update password</button>
+      </form>
+    </section>
+
+    <section class="settings-card danger-zone">
+      <h2>Delete account</h2>
+      <p class="auth-subtitle">This permanently removes your chats, uploaded files, and private knowledge library.</p>
+      <form class="auth-form" method="post" action="{{ url_for('auth.delete_account') }}" onsubmit="return confirm('Permanently delete this account and workspace?');">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <label class="auth-field">Confirm with your password<input type="password" name="password" required autocomplete="current-password"></label>
+        <button class="danger-button" type="submit">Delete account and workspace</button>
+      </form>
+    </section>
+  </div>
+</main>
+</body>
+</html>

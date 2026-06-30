@@ -1,0 +1,1236 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta
+    name="description"
+    content="AI Studio is a private local AI workspace powered by Ollama, PostgreSQL, OCR, and retrieval-augmented generation."
+  >
+
+  <title>AI Studio</title>
+  <meta name="csrf-token" content="{{ csrf_token() }}">
+
+  <script>
+    try {
+      const savedSettings = JSON.parse(
+        localStorage.getItem("aiStudioSettingsV2") || "{}"
+      );
+
+      document.documentElement.dataset.theme =
+        savedSettings.theme === "light" ? "light" : "dark";
+    } catch (_error) {
+      document.documentElement.dataset.theme = "dark";
+    }
+  </script>
+
+  <link rel="stylesheet" href="/static/style.css">
+
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/highlight.js/lib/common.min.js"></script>
+  <link
+    rel="stylesheet"
+    href="https://cdn.jsdelivr.net/npm/highlight.js/styles/github-dark.min.css"
+  >
+</head>
+
+<body>
+<a class="skip-link" href="#mainContent">Skip to main content</a>
+<div class="app">
+
+  <aside class="sidebar">
+    <div class="brand">
+      <div class="logo">🤖</div>
+
+      <div>
+        <h2>AI Studio</h2>
+        <p>Local Ollama Chat</p>
+      </div>
+    </div>
+
+    <button type="button" class="new-chat">
+      + New Chat
+    </button>
+
+    <button type="button" class="regenerate-chat">
+      ↻ Regenerate
+    </button>
+
+    <input
+      type="text"
+      id="chatSearch"
+      class="chat-search"
+      placeholder="Search chats..."
+      aria-label="Search chats"
+      autocomplete="off"
+    >
+
+    <div class="chat-organization">
+      <button
+        type="button"
+        id="chatOrganizerToggle"
+        class="chat-organizer-toggle"
+        aria-expanded="false"
+        aria-controls="chatOrganizerPanel"
+      >
+        <span aria-hidden="true">⌁</span>
+        <span>Organize</span>
+        <span id="chatOrganizerCount" class="chat-organizer-count">All</span>
+      </button>
+
+      <div id="chatOrganizerPanel" class="chat-organizer-panel" hidden>
+        <div class="chat-view-tabs" role="group" aria-label="Chat view">
+          <button type="button" class="chat-view-button is-active" data-chat-view="active">Active</button>
+          <button type="button" class="chat-view-button" data-chat-view="favorites">Favorites</button>
+          <button type="button" class="chat-view-button" data-chat-view="archived">Archived</button>
+          <button type="button" class="chat-view-button" data-chat-view="all">All</button>
+        </div>
+
+        <label class="chat-organizer-field">
+          <span>Folder</span>
+          <select id="chatFolderFilter">
+            <option value="">All folders</option>
+          </select>
+        </label>
+
+        <label class="chat-organizer-field">
+          <span>Tag</span>
+          <select id="chatTagFilter">
+            <option value="">All tags</option>
+          </select>
+        </label>
+
+        <div class="chat-organizer-section">
+          <div class="chat-organizer-heading">
+            <strong>Folders</strong>
+            <small>Drag a chat onto a folder</small>
+          </div>
+          <div class="chat-organizer-create">
+            <input id="chatFolderName" type="text" maxlength="120" placeholder="New folder">
+            <button type="button" id="chatFolderAdd" title="Create folder">+</button>
+          </div>
+          <div id="chatFolderList" class="chat-folder-list"></div>
+        </div>
+
+        <div class="chat-organizer-section">
+          <div class="chat-organizer-heading">
+            <strong>Tags</strong>
+            <small>Use tags with bulk actions</small>
+          </div>
+          <div class="chat-organizer-create">
+            <input id="chatTagName" type="text" maxlength="80" placeholder="New tag">
+            <select id="chatTagColor" aria-label="Tag color">
+              <option value="violet">Violet</option>
+              <option value="blue">Blue</option>
+              <option value="cyan">Cyan</option>
+              <option value="green">Green</option>
+              <option value="amber">Amber</option>
+              <option value="rose">Rose</option>
+            </select>
+            <button type="button" id="chatTagAdd" title="Create tag">+</button>
+          </div>
+          <div id="chatTagList" class="chat-tag-list"></div>
+        </div>
+
+        <button type="button" id="chatBulkModeToggle" class="chat-bulk-mode-toggle">
+          Select multiple chats
+        </button>
+        <p id="chatOrganizationStatus" class="chat-organization-status" aria-live="polite"></p>
+      </div>
+    </div>
+
+    <div id="chatBulkToolbar" class="chat-bulk-toolbar" hidden>
+      <span><strong id="chatBulkCount">0</strong> selected</span>
+      <select id="chatBulkAction" aria-label="Bulk chat action">
+        <option value="">Choose action</option>
+        <option value="favorite">Add favorite</option>
+        <option value="unfavorite">Remove favorite</option>
+        <option value="archive">Archive</option>
+        <option value="restore">Restore</option>
+        <option value="move">Move to folder</option>
+        <option value="add_tag">Add tag</option>
+        <option value="remove_tag">Remove tag</option>
+        <option value="delete">Delete</option>
+      </select>
+      <select id="chatBulkTarget" aria-label="Bulk action target" hidden></select>
+      <button type="button" id="chatBulkApply">Apply</button>
+      <button type="button" id="chatBulkCancel" title="Cancel selection">×</button>
+    </div>
+
+    <div class="chat-list" id="chatList"></div>
+
+    <div class="sidebar-footer">
+      {% if user and user.is_authenticated %}
+        <div class="sidebar-account">
+          <div class="sidebar-account-avatar" aria-hidden="true">{{ user.display_name[:1]|upper }}</div>
+          <div class="sidebar-account-details">
+            <strong title="{{ user.display_name }}">{{ user.display_name }}</strong>
+            <small title="{{ user.email }}">{{ user.email }}</small>
+          </div>
+          <details class="sidebar-account-menu">
+            <summary aria-label="Open account menu" title="Account menu">•••</summary>
+            <div class="sidebar-account-popover">
+              <a href="{{ url_for('auth.account') }}">Account settings</a>
+              {% if user.is_admin %}<a href="{{ url_for('admin.dashboard') }}">Admin dashboard</a><a href="{{ url_for('auth.admin_users') }}">User administration</a>{% endif %}
+              <button type="button" id="workspaceBackupButton">Download workspace backup</button>
+              <button type="button" id="workspaceRestoreButton">Restore workspace backup</button>
+              <input id="workspaceRestoreInput" type="file" accept=".zip,application/zip" hidden>
+              <form method="post" action="{{ url_for('auth.logout') }}">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button type="submit">Sign out</button>
+              </form>
+            </div>
+          </details>
+        </div>
+      {% else %}
+        <p>Powered by Ollama</p>
+      {% endif %}
+    </div>
+  </aside>
+
+  <main class="chat-area" id="mainContent" tabindex="-1">
+
+    <header class="header compact-header">
+      <div class="header-title">
+        <div class="header-title-row">
+          <h1>AI Assistant</h1>
+          <span class="workspace-badge">Private workspace</span>
+        </div>
+        <p>Local models, reusable knowledge, and private chat history</p>
+      </div>
+
+      <div class="header-controls">
+        <label class="compact-control">
+          <span>Model</span>
+          <select id="model"></select>
+        </label>
+
+        <label class="compact-control">
+          <span>Response</span>
+          <select id="responseMode">
+            <option value="single">Single Answer</option>
+            <option value="options">3 Options</option>
+            <option value="detailed">Detailed</option>
+            <option value="creative">Creative</option>
+            <option value="precise">Precise</option>
+            <option value="fast">Fast</option>
+          </select>
+        </label>
+
+        <button
+          type="button"
+          id="themeToggle"
+          class="theme-toggle compact-icon-button"
+          aria-label="Switch theme"
+          title="Switch theme"
+        >
+          <span id="themeIcon" aria-hidden="true">☀</span>
+          <span id="themeLabel">Light</span>
+        </button>
+
+        <button
+          type="button"
+          id="systemStatusButton"
+          class="system-status-button compact-icon-button"
+          aria-expanded="false"
+          aria-controls="systemStatusPanel"
+          title="Open system status"
+        >
+          <span
+            id="systemStatusDot"
+            class="system-status-dot status-checking"
+            aria-hidden="true"
+          ></span>
+          <span id="systemStatusLabel">Checking</span>
+        </button>
+
+        <details class="advanced-box" id="advancedBox">
+          <summary>
+            <span>⚙ Advanced</span>
+            <span class="advanced-summary-badge">Saved</span>
+          </summary>
+
+          <div class="advanced-controls">
+            <div class="advanced-panel-header">
+              <div>
+                <strong>Generation settings</strong>
+                <small>
+                  Applied to normal chat, RAG, and 3 Options.
+                </small>
+              </div>
+
+              <button
+                type="button"
+                id="resetSettingsButton"
+                class="reset-settings-button"
+              >
+                Reset tuning
+              </button>
+            </div>
+
+            <div class="advanced-grid">
+              <label class="advanced-field">
+                <span>
+                  Temperature
+                  <small>Creativity and variation</small>
+                </span>
+                <input
+                  type="number"
+                  id="temperature"
+                  min="0"
+                  max="2"
+                  step="0.1"
+                  value="0.7"
+                >
+              </label>
+
+              <label class="advanced-field">
+                <span>
+                  Max Tokens
+                  <small>Maximum response length</small>
+                </span>
+                <input
+                  type="number"
+                  id="maxTokens"
+                  min="50"
+                  max="8192"
+                  step="50"
+                  value="1000"
+                >
+              </label>
+
+              <label class="advanced-field">
+                <span>
+                  Top P
+                  <small>Nucleus sampling threshold</small>
+                </span>
+                <input
+                  type="number"
+                  id="topP"
+                  min="0.05"
+                  max="1"
+                  step="0.05"
+                  value="0.9"
+                >
+              </label>
+
+              <label class="advanced-field">
+                <span>
+                  Top K
+                  <small>Candidate token limit</small>
+                </span>
+                <input
+                  type="number"
+                  id="topK"
+                  min="0"
+                  max="100"
+                  step="1"
+                  value="40"
+                >
+              </label>
+
+              <label class="advanced-field">
+                <span>
+                  Repeat Penalty
+                  <small>Reduces repeated phrases</small>
+                </span>
+                <input
+                  type="number"
+                  id="repeatPenalty"
+                  min="0.5"
+                  max="2"
+                  step="0.05"
+                  value="1.1"
+                >
+              </label>
+
+              <label class="advanced-field">
+                <span>
+                  Context Length
+                  <small>Maximum working context</small>
+                </span>
+                <input
+                  type="number"
+                  id="contextLength"
+                  min="512"
+                  max="32768"
+                  step="512"
+                  value="4096"
+                >
+              </label>
+
+              <label class="advanced-field advanced-field-full">
+                <span>
+                  System Prompt
+                  <small>
+                    Permanent instructions for every answer.
+                  </small>
+                </span>
+
+                <textarea
+                  id="systemPrompt"
+                  rows="5"
+                  maxlength="4000"
+                  placeholder="Example: You are a concise senior software engineer. Explain decisions clearly and do not invent facts."
+                ></textarea>
+
+                <span class="system-prompt-count">
+                  <span id="systemPromptCount">0</span>/4000
+                </span>
+              </label>
+            </div>
+
+            <p class="advanced-save-note" id="settingsSaveNote">
+              Settings save automatically in this browser.
+            </p>
+          </div>
+        </details>
+      </div>
+    </header>
+
+    <section
+      class="system-status-panel"
+      id="systemStatusPanel"
+      hidden
+      aria-live="polite"
+    >
+      <div class="system-status-panel-header">
+        <div>
+          <span class="system-status-kicker">Runtime health</span>
+          <h2>System status</h2>
+          <p>Database, Ollama, embeddings, OCR, and upload storage.</p>
+        </div>
+
+        <div class="system-status-panel-actions">
+          <span
+            id="systemStatusOverall"
+            class="system-status-overall status-checking"
+          >
+            Checking
+          </span>
+
+          <button
+            type="button"
+            id="systemStatusRefresh"
+            class="system-status-refresh"
+          >
+            Refresh
+          </button>
+        </div>
+      </div>
+
+      <div
+        class="system-status-components"
+        id="systemStatusComponents"
+      ></div>
+
+      <p
+        class="system-status-checked"
+        id="systemStatusChecked"
+      >
+        Not checked yet
+      </p>
+    </section>
+
+    <section class="document-panel" id="documentPanel">
+      <div class="document-panel-bar">
+        <div class="document-panel-title">
+          <span class="document-panel-icon">📚</span>
+
+          <div>
+            <strong>Knowledge sources</strong>
+            <small id="knowledgeSelectionSummary">No sources selected</small>
+          </div>
+        </div>
+
+        <div class="knowledge-summary-badges" aria-label="Knowledge source counts">
+          <span class="knowledge-summary-badge">
+            Chat <strong id="documentCount">0 files</strong>
+          </span>
+          <span class="knowledge-summary-badge knowledge-summary-badge-global">
+            Global <strong id="globalDocumentCount">0 files</strong>
+          </span>
+          <span class="knowledge-summary-badge knowledge-summary-badge-web">
+            Web <strong id="websiteSourceCount">0 pages</strong>
+          </span>
+          <span class="knowledge-summary-badge knowledge-summary-badge-social">
+            Social <strong id="socialSourceCount">0 links</strong>
+          </span>
+        </div>
+
+        <div class="document-panel-actions">
+          <label class="document-switch document-switch-compact">
+            <input
+              type="checkbox"
+              id="useDocumentsToggle"
+              checked
+            >
+            <span class="document-switch-track" aria-hidden="true">
+              <span class="document-switch-thumb"></span>
+            </span>
+            <span class="document-switch-label">Use knowledge</span>
+          </label>
+
+          <button
+            type="button"
+            id="documentToggle"
+            class="document-toggle knowledge-manage-button"
+            aria-expanded="false"
+            aria-controls="documentPanelBody"
+          >
+            Manage
+          </button>
+        </div>
+      </div>
+
+      <div
+        id="documentDrawerBackdrop"
+        class="document-drawer-backdrop"
+        hidden
+      ></div>
+
+      <aside
+        class="document-panel-body knowledge-drawer"
+        id="documentPanelBody"
+        aria-hidden="true"
+        aria-label="Knowledge manager"
+      >
+        <div class="knowledge-drawer-header">
+          <div>
+            <span class="knowledge-drawer-kicker">RAG workspace</span>
+            <h2>Manage knowledge</h2>
+            <p>Select the sources the assistant may use.</p>
+          </div>
+
+          <button
+            type="button"
+            id="documentCloseButton"
+            class="knowledge-drawer-close"
+            aria-label="Close knowledge manager"
+            title="Close"
+          >
+            ×
+          </button>
+        </div>
+
+        <div class="knowledge-drawer-switches">
+          <label class="document-switch">
+            <input
+              type="checkbox"
+              id="strictDocumentsToggle"
+              checked
+            >
+            <span class="document-switch-track" aria-hidden="true">
+              <span class="document-switch-thumb"></span>
+            </span>
+            <span class="document-switch-label">Strict answers</span>
+          </label>
+
+          <label class="document-switch">
+            <input
+              type="checkbox"
+              id="useGlobalDocumentsToggle"
+              checked
+            >
+            <span class="document-switch-track" aria-hidden="true">
+              <span class="document-switch-thumb"></span>
+            </span>
+            <span class="document-switch-label">Global library</span>
+          </label>
+        </div>
+
+        <div class="knowledge-tabs" role="tablist" aria-label="Knowledge libraries">
+          <button
+            type="button"
+            id="chatKnowledgeTab"
+            class="knowledge-tab is-active"
+            role="tab"
+            aria-selected="true"
+            aria-controls="chatKnowledgePanel"
+          >
+            Chat documents
+          </button>
+
+          <button
+            type="button"
+            id="globalKnowledgeTab"
+            class="knowledge-tab"
+            role="tab"
+            aria-selected="false"
+            aria-controls="globalKnowledgePanel"
+          >
+            Global library
+          </button>
+        </div>
+
+        <div class="knowledge-drawer-content">
+          <section
+            class="knowledge-section knowledge-chat-section"
+            id="chatKnowledgePanel"
+            role="tabpanel"
+            aria-labelledby="chatKnowledgeTab"
+          >
+            <div class="knowledge-section-header">
+              <div>
+                <span class="knowledge-scope-badge">Chat</span>
+                <strong>Chat documents</strong>
+                <small>Available only in this conversation</small>
+              </div>
+            </div>
+
+            <div class="knowledge-upload-row">
+              <input
+                type="file"
+                id="documentInput"
+                accept=".pdf,.docx,.txt,.png,.jpg,.jpeg"
+                multiple
+                hidden
+              >
+
+              <button
+                type="button"
+                id="documentUploadButton"
+                class="document-upload-button"
+              >
+                <span>＋</span>
+                Upload to chat
+              </button>
+
+              <div
+                id="documentUploadStatus"
+                class="document-upload-status"
+                role="status"
+                aria-live="polite"
+              ></div>
+
+              <p class="knowledge-upload-help">
+                PDF, DOCX, TXT, PNG, or JPG · 20 MB maximum · scanned files use OCR
+              </p>
+            </div>
+
+            <div class="document-selection-toolbar">
+              <span id="documentSelectionSummary">0 selected</span>
+
+              <button
+                type="button"
+                id="selectAllDocumentsButton"
+                class="document-select-all"
+              >
+                Select all
+              </button>
+            </div>
+
+            <div class="document-list" id="documentList"></div>
+          </section>
+
+          <section
+            class="knowledge-section knowledge-global-section"
+            id="globalKnowledgePanel"
+            role="tabpanel"
+            aria-labelledby="globalKnowledgeTab"
+            hidden
+          >
+            <div class="knowledge-section-header">
+              <div>
+                <span class="knowledge-scope-badge global-badge">Global</span>
+                <strong>Global knowledge library</strong>
+                <small>Reusable automatically in every chat</small>
+              </div>
+            </div>
+
+            <div class="knowledge-upload-row">
+              <input
+                type="file"
+                id="globalDocumentInput"
+                accept=".pdf,.docx,.txt,.png,.jpg,.jpeg"
+                multiple
+                hidden
+              >
+
+              <button
+                type="button"
+                id="globalDocumentUploadButton"
+                class="document-upload-button global-upload-button"
+              >
+                <span>＋</span>
+                Upload globally
+              </button>
+
+              <div
+                id="globalDocumentUploadStatus"
+                class="document-upload-status"
+                role="status"
+                aria-live="polite"
+              ></div>
+
+              <p class="knowledge-upload-help">
+                Reusable PDF, DOCX, TXT, PNG, or JPG · scanned files use OCR
+              </p>
+            </div>
+
+            <div class="document-selection-toolbar">
+              <span id="globalDocumentSelectionSummary">0 selected</span>
+
+              <button
+                type="button"
+                id="selectAllGlobalDocumentsButton"
+                class="document-select-all"
+              >
+                Select all
+              </button>
+            </div>
+
+            <div class="document-list" id="globalDocumentList"></div>
+
+            <div class="website-library-divider">
+              <span>Indexed websites</span>
+            </div>
+
+            <div class="website-add-card">
+              <label for="websiteUrlInput">
+                Add website knowledge
+              </label>
+
+              <div class="website-add-row website-crawler-row">
+                <input
+                  type="url"
+                  id="websiteUrlInput"
+                  maxlength="2048"
+                  placeholder="https://example.com"
+                  autocomplete="url"
+                >
+
+                <div class="website-primary-actions">
+                  <button
+                    type="button"
+                    id="websiteAddButton"
+                    class="document-upload-button website-add-button"
+                    title="Index only this page"
+                  >
+                    <span>＋</span>
+                    Add page
+                  </button>
+
+                  <button
+                    type="button"
+                    id="websiteDiscoverButton"
+                    class="document-upload-button website-discover-button"
+                    title="Discover internal pages and sitemap URLs"
+                  >
+                    <svg viewBox="0 0 24 24" aria-hidden="true">
+                      <circle cx="11" cy="11" r="6"></circle>
+                      <path d="m16 16 4 4"></path>
+                      <path d="M8.5 11h5"></path>
+                      <path d="M11 8.5v5"></path>
+                    </svg>
+                    Discover site
+                  </button>
+                </div>
+              </div>
+
+              <details class="website-crawler-options">
+                <summary>Crawl and sitemap options</summary>
+
+                <div class="website-crawler-settings">
+                  <label>
+                    <span>Maximum pages</span>
+                    <input
+                      type="number"
+                      id="websiteCrawlerMaxPages"
+                      min="1"
+                      max="100"
+                      value="25"
+                    >
+                  </label>
+
+                  <label>
+                    <span>Crawl depth</span>
+                    <input
+                      type="number"
+                      id="websiteCrawlerMaxDepth"
+                      min="0"
+                      max="5"
+                      value="2"
+                    >
+                  </label>
+
+                  <label class="website-crawler-checkbox">
+                    <input
+                      type="checkbox"
+                      id="websiteCrawlerUseSitemap"
+                      checked
+                    >
+                    <span>Use sitemap.xml when available</span>
+                  </label>
+                </div>
+              </details>
+
+              <p class="knowledge-upload-help">
+                Add one page, or discover same-domain pages from links and sitemap.xml before choosing what to index.
+              </p>
+
+              <div
+                id="websiteStatus"
+                class="document-upload-status"
+                role="status"
+                aria-live="polite"
+              ></div>
+
+              <section
+                id="websiteDiscoveryPanel"
+                class="website-discovery-panel"
+                aria-label="Discovered website pages"
+                hidden
+              >
+                <div class="website-discovery-header">
+                  <div>
+                    <strong>Discovered pages</strong>
+                    <span id="websiteDiscoverySummary">0 pages</span>
+                  </div>
+
+                  <div class="website-discovery-selection-actions">
+                    <button
+                      type="button"
+                      id="websiteDiscoverySelectAll"
+                      class="document-select-all"
+                    >
+                      Select all
+                    </button>
+                    <button
+                      type="button"
+                      id="websiteDiscoveryClearAll"
+                      class="document-select-all"
+                    >
+                      Clear
+                    </button>
+                  </div>
+                </div>
+
+                <div
+                  id="websiteDiscoveryList"
+                  class="website-discovery-list"
+                ></div>
+
+                <div class="website-discovery-footer">
+                  <button
+                    type="button"
+                    id="websiteDiscoveryCancel"
+                    class="document-select-all"
+                  >
+                    Cancel
+                  </button>
+
+                  <button
+                    type="button"
+                    id="websiteIndexSelectedButton"
+                    class="document-upload-button website-index-selected-button"
+                  >
+                    Index selected pages
+                  </button>
+                </div>
+              </section>
+            </div>
+
+            <div class="document-selection-toolbar website-selection-toolbar">
+              <span id="websiteSelectionSummary">0 selected</span>
+
+              <button
+                type="button"
+                id="selectAllWebsiteSourcesButton"
+                class="document-select-all"
+              >
+                Select all
+              </button>
+            </div>
+
+            <div
+              class="document-list website-source-list"
+              id="websiteSourceList"
+            ></div>
+
+            <div class="website-library-divider social-library-divider">
+              <span>Social &amp; business profiles</span>
+            </div>
+
+            <div class="website-add-card social-add-card">
+              <div class="social-add-heading">
+                <div>
+                  <label for="socialUrlInput">
+                    Add a social-media or Google Business Profile source
+                  </label>
+                  <p>Try a public import first. Google Business Profiles use the official Places API when configured; blocked social pages can be added with pasted visible text.</p>
+                </div>
+                <span class="social-privacy-badge">No passwords required</span>
+              </div>
+
+              <div class="website-add-row social-public-import-row">
+                <input
+                  type="url"
+                  id="socialUrlInput"
+                  maxlength="2048"
+                  placeholder="LinkedIn, Facebook, Instagram, or Google Maps link"
+                  autocomplete="url"
+                >
+
+                <button
+                  type="button"
+                  id="socialAddButton"
+                  class="document-upload-button social-add-button"
+                  title="Try to import readable public profile content"
+                >
+                  <span>＋</span>
+                  Import public
+                </button>
+              </div>
+
+              <details
+                id="socialManualDetails"
+                class="social-manual-details"
+              >
+                <summary>
+                  <span>Blocked or login-only page?</span>
+                  <small>Paste the visible About, caption, description, or post text</small>
+                </summary>
+
+                <div class="social-manual-content">
+                  <p id="socialFallbackHint" class="social-fallback-hint">
+                    Some platforms do not expose readable HTML without login. Open the public source, copy its visible About text, caption, description, post text, or business details, then paste it below. AI Studio keeps the original link as the citation.
+                  </p>
+
+                  <div class="social-manual-tools">
+                    <button
+                      type="button"
+                      id="socialOpenSourceButton"
+                      class="social-tool-button"
+                    >
+                      Open source
+                    </button>
+                    <button
+                      type="button"
+                      id="socialPasteClipboardButton"
+                      class="social-tool-button"
+                    >
+                      Paste from clipboard
+                    </button>
+                  </div>
+
+                  <label for="socialTitleInput" class="social-field-label">
+                    Source title
+                  </label>
+                  <input
+                    type="text"
+                    id="socialTitleInput"
+                    maxlength="500"
+                    placeholder="Example: Company About page"
+                  >
+
+                  <label for="socialManualText" class="social-field-label">
+                    Visible social content
+                  </label>
+                  <textarea
+                    id="socialManualText"
+                    maxlength="200000"
+                    rows="6"
+                    placeholder="Paste the readable text here. Include important dates, services, descriptions, captions, or contact information."
+                  ></textarea>
+                  <div class="social-manual-meta">
+                    <span id="socialManualValidation">Paste at least 40 readable characters.</span>
+                    <strong id="socialManualCount">0 / 40</strong>
+                  </div>
+
+                  <button
+                    type="button"
+                    id="socialManualAddButton"
+                    class="document-upload-button social-manual-add-button"
+                  >
+                    <span>✓</span>
+                    Index pasted content
+                  </button>
+                </div>
+              </details>
+
+              <p class="knowledge-upload-help social-import-help">
+                Automatic import respects platform access rules. A Google Maps Platform key enables reliable Google Business Profile import. Pasted content stays private in your own knowledge library.
+              </p>
+
+              <div
+                id="socialStatus"
+                class="document-upload-status"
+                role="status"
+                aria-live="polite"
+              ></div>
+            </div>
+
+            <div class="document-selection-toolbar social-selection-toolbar">
+              <span id="socialSelectionSummary">0 selected</span>
+
+              <button
+                type="button"
+                id="selectAllSocialSourcesButton"
+                class="document-select-all"
+              >
+                Select all
+              </button>
+            </div>
+
+            <div
+              class="document-list social-source-list"
+              id="socialSourceList"
+            ></div>
+          </section>
+        </div>
+      </aside>
+    </section>
+
+    <div
+      id="promptLibraryBackdrop"
+      class="prompt-library-backdrop"
+      hidden
+    ></div>
+
+    <aside
+      id="promptLibraryDrawer"
+      class="prompt-library-drawer"
+      aria-hidden="true"
+      aria-label="Prompt library"
+    >
+      <header class="prompt-library-header">
+        <div>
+          <span class="prompt-library-kicker">Reusable instructions</span>
+          <h2>Prompt library</h2>
+          <p>Save, organize, and insert your most useful prompts.</p>
+        </div>
+
+        <button
+          type="button"
+          id="promptLibraryClose"
+          class="prompt-library-close"
+          aria-label="Close prompt library"
+          title="Close"
+        >
+          ×
+        </button>
+      </header>
+
+      <div class="prompt-library-toolbar">
+        <label class="prompt-library-search">
+          <span class="sr-only">Search prompts</span>
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <circle cx="11" cy="11" r="6"></circle>
+            <path d="m16 16 4 4"></path>
+          </svg>
+          <input
+            type="search"
+            id="promptLibrarySearch"
+            placeholder="Search saved prompts..."
+            autocomplete="off"
+          >
+        </label>
+
+        <select id="promptLibraryCategoryFilter" aria-label="Filter prompt category">
+          <option value="">All categories</option>
+        </select>
+
+        <button
+          type="button"
+          id="promptLibraryFavorites"
+          class="prompt-library-favorites"
+          aria-pressed="false"
+          title="Show favorite prompts"
+        >
+          <span aria-hidden="true">☆</span>
+          Favorites
+        </button>
+      </div>
+
+      <div class="prompt-library-actions">
+        <button type="button" id="promptLibraryNew">
+          <span aria-hidden="true">＋</span>
+          New prompt
+        </button>
+        <button type="button" id="promptLibrarySaveCurrent">
+          Save current text
+        </button>
+      </div>
+
+      <form id="promptTemplateForm" class="prompt-template-form" hidden>
+        <input type="hidden" id="promptTemplateId">
+
+        <label>
+          <span>Title</span>
+          <input
+            id="promptTemplateTitle"
+            type="text"
+            maxlength="160"
+            placeholder="Example: Professional email rewrite"
+            required
+          >
+        </label>
+
+        <label>
+          <span>Category</span>
+          <input
+            id="promptTemplateCategory"
+            type="text"
+            maxlength="80"
+            value="General"
+            placeholder="General"
+          >
+        </label>
+
+        <label class="prompt-template-content-field">
+          <span>Prompt</span>
+          <textarea
+            id="promptTemplateContent"
+            rows="7"
+            maxlength="50000"
+            placeholder="Write the reusable prompt..."
+            required
+          ></textarea>
+        </label>
+
+        <label class="prompt-template-favorite-field">
+          <input type="checkbox" id="promptTemplateFavorite">
+          <span>Mark as favorite</span>
+        </label>
+
+        <div class="prompt-template-form-actions">
+          <button type="submit" id="promptTemplateSave">Save prompt</button>
+          <button type="button" id="promptTemplateCancel">Cancel</button>
+        </div>
+      </form>
+
+      <p
+        id="promptLibraryStatus"
+        class="prompt-library-status"
+        role="status"
+        aria-live="polite"
+      ></p>
+
+      <div id="promptLibraryList" class="prompt-library-list"></div>
+    </aside>
+
+    <section id="chat" class="chat-box"></section>
+
+    <footer class="input-area" id="inputArea">
+      <input
+        type="file"
+        id="attachmentInput"
+        accept=".pdf,.docx,.txt,.png,.jpg,.jpeg,.webp"
+        multiple
+        hidden
+      >
+
+      <div
+        id="attachmentPreviewList"
+        class="attachment-preview-list"
+        hidden
+      ></div>
+
+      <div class="composer-row">
+        <button
+          type="button"
+          id="attachmentButton"
+          class="attachment-button"
+          aria-label="Attach files"
+          title="Attach image, PDF, DOCX, or TXT"
+        >
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M8.5 12.5 14.9 6.1a3 3 0 0 1 4.2 4.2l-8.2 8.2a5 5 0 0 1-7.1-7.1l8-8"></path>
+          </svg>
+        </button>
+
+        <button
+          type="button"
+          id="promptLibraryButton"
+          class="prompt-library-button"
+          aria-label="Open prompt library"
+          aria-expanded="false"
+          aria-controls="promptLibraryDrawer"
+          title="Prompt library"
+        >
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M5 4.5h10.5A2.5 2.5 0 0 1 18 7v12H7.5A2.5 2.5 0 0 1 5 16.5v-12Z"></path>
+            <path d="M7.5 19A2.5 2.5 0 0 1 5 16.5 2.5 2.5 0 0 1 7.5 14H18"></path>
+            <path d="m18.5 3 .55 1.45L20.5 5l-1.45.55L18.5 7l-.55-1.45L16.5 5l1.45-.55L18.5 3Z"></path>
+          </svg>
+        </button>
+
+        <button
+          type="button"
+          id="voiceInputButton"
+          class="voice-input-button"
+          aria-label="Start voice input"
+          aria-pressed="false"
+          title="Start voice input"
+        >
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <rect x="9" y="3" width="6" height="11" rx="3"></rect>
+            <path d="M5.5 11.5a6.5 6.5 0 0 0 13 0"></path>
+            <path d="M12 18v3"></path>
+            <path d="M9 21h6"></path>
+          </svg>
+        </button>
+
+        <textarea
+          id="prompt"
+          rows="1"
+          maxlength="50000"
+          placeholder="Message your AI assistant..."
+          autocomplete="off"
+        ></textarea>
+
+        <button
+          type="button"
+          id="voiceOutputButton"
+          class="voice-output-button"
+          aria-label="Automatic read aloud is off"
+          aria-pressed="false"
+          title="Automatic read aloud is off"
+        >
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M4 10v4h4l5 4V6L8 10H4Z"></path>
+            <path d="M16 9a4 4 0 0 1 0 6"></path>
+            <path d="M18.5 6.5a8 8 0 0 1 0 11"></path>
+          </svg>
+        </button>
+
+        <button
+          type="button"
+          id="sendButton"
+          class="send-button"
+          aria-label="Send message"
+          title="Send message"
+        >
+          <svg class="send-button-icon send-icon" viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M4 4.8 20 12 4 19.2l2.1-6.1L14 12l-7.9-1.1L4 4.8Z"></path>
+          </svg>
+          <svg class="send-button-icon stop-icon" viewBox="0 0 24 24" aria-hidden="true">
+            <rect x="7" y="7" width="10" height="10" rx="2"></rect>
+          </svg>
+          <span class="sr-only" id="sendButtonLabel">Send message</span>
+        </button>
+      </div>
+
+      <div class="composer-status-row">
+        <div
+          id="attachmentStatus"
+          class="attachment-status"
+          role="status"
+          aria-live="polite"
+        ></div>
+
+        <div
+          id="voiceStatus"
+          class="voice-status"
+          role="status"
+          aria-live="polite"
+        ></div>
+      </div>
+    </footer>
+  </main>
+</div>
+
+<script type="module" src="/static/js/app.js"></script>
+</body>
+</html>
