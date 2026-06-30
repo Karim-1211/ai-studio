@@ -59,6 +59,11 @@ def login():
     if current_user.is_authenticated:
         return redirect(url_for("home"))
 
+    has_users = db.session.query(User.id).first() is not None
+
+    if not has_users:
+        return redirect(url_for("auth.register"))
+
     next_url = _safe_next_url(request.args.get("next") or request.form.get("next"))
 
     if request.method == "POST":
@@ -82,7 +87,6 @@ def login():
             return redirect(next_url or url_for("home"))
         flash(error or "Unable to sign in.", "error")
 
-    has_users = db.session.query(User.id).first() is not None
     return render_template(
         "auth.html",
         mode="login",
@@ -97,7 +101,10 @@ def register():
     if current_user.is_authenticated:
         return redirect(url_for("home"))
 
-    if not current_app.config.get("ALLOW_REGISTRATION", False):
+    has_users = db.session.query(User.id).first() is not None
+    first_owner_setup = not has_users
+
+    if not current_app.config.get("ALLOW_REGISTRATION", False) and not first_owner_setup:
         flash("Public registration is disabled.", "error")
         return redirect(url_for("auth.login"))
 
@@ -111,7 +118,7 @@ def register():
                 email=request.form.get("email"),
                 display_name=request.form.get("display_name"),
                 password=password,
-                is_admin=False,
+                is_admin=first_owner_setup,
             )
             login_user(user, fresh=True)
             return redirect(url_for("home"))
@@ -123,7 +130,8 @@ def register():
         "auth.html",
         mode="register",
         allow_registration=True,
-        has_users=True,
+        has_users=has_users,
+        first_owner_setup=first_owner_setup,
     )
 
 
