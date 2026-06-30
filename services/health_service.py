@@ -255,41 +255,76 @@ def check_upload_folder(upload_folder):
 def get_system_health(config):
     database = check_database()
 
-    ollama = check_ollama(
-        config.get(
-            "HEALTH_HTTP_TIMEOUT",
-            3.0
+    ai_provider = (
+        os.getenv("AI_PROVIDER")
+        or config.get("AI_PROVIDER")
+        or "ollama"
+    ).lower()
+
+    if ai_provider == "ollama":
+        ollama = check_ollama(
+            config.get(
+                "HEALTH_HTTP_TIMEOUT",
+                3.0
+            )
         )
-    )
+        ai = ollama
+        embedding = check_embedding_model(ollama)
+    else:
+        api_key_name = {
+            "gemini": "GEMINI_API_KEY",
+            "openai": "OPENAI_API_KEY",
+            "openrouter": "OPENROUTER_API_KEY",
+            "anthropic": "ANTHROPIC_API_KEY"
+        }.get(ai_provider)
 
-    embedding = check_embedding_model(
-        ollama
-    )
+        api_key_configured = bool(
+            api_key_name and os.getenv(api_key_name)
+        )
 
-    ocr = check_ocr(
-        config
-    )
+        ai = _component(
+            api_key_configured,
+            "ready" if api_key_configured else "unavailable",
+            (
+                f"{ai_provider.title()} provider is configured."
+                if api_key_configured
+                else f"{api_key_name or 'AI provider'} is not configured."
+            ),
+            details={
+                "provider": ai_provider
+            }
+        )
 
-    uploads = check_upload_folder(
-        config["UPLOAD_FOLDER"]
-    )
+        embedding = _component(
+            True,
+            "disabled",
+            "Local embedding model check is skipped for cloud AI providers."
+        )
+
+    ocr = check_ocr(config)
+    uploads = check_upload_folder(config["UPLOAD_FOLDER"])
 
     components = {
         "database": database,
-        "ollama": ollama,
+        "ai": ai,
         "embedding": embedding,
         "ocr": ocr,
         "uploads": uploads
     }
 
+    if ai_provider == "ollama":
+        components["ollama"] = ai
+
     essential_ready = all([
         database["ok"],
-        ollama["ok"],
-        embedding["ok"],
+        ai["ok"],
         uploads["ok"]
     ])
 
-    optional_ready = ocr["ok"]
+    optional_ready = all([
+        embedding["ok"],
+        ocr["ok"]
+    ])
 
     if essential_ready and optional_ready:
         overall = "ready"
@@ -301,5 +336,6 @@ def get_system_health(config):
     return {
         "status": overall,
         "ready": essential_ready,
+        "provider": ai_provider,
         "components": components
     }
