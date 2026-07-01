@@ -12,15 +12,14 @@ Built by **Karim-ul Islam** — **AI Solutions Developer | SEO & Digital Marketi
 ![Docker](https://img.shields.io/badge/Docker-Ready-blue)
 ![Render](https://img.shields.io/badge/Render-Deployed-brightgreen)
 ![RAG](https://img.shields.io/badge/RAG-Knowledge%20Search-orange)
+![Status](https://img.shields.io/badge/Status-Stable-success)
 
 ---
 
 ## Live Demo
 
-Add your Render URL here:
-
 ```text
-https://your-ai-studio.onrender.com
+https://ai-studio-ty6z.onrender.com
 ```
 
 ---
@@ -39,9 +38,9 @@ AI Studio started as a local Ollama-powered assistant and evolved into a cloud-r
 - Gemini-powered cloud chat
 - Ollama-powered local chat
 - Multiple chat sessions
-- Markdown rendering
-- Code-friendly responses
+- Markdown-friendly responses
 - Persistent conversation history
+- Cloud/local provider separation
 
 ### Knowledge & RAG
 - PDF knowledge ingestion
@@ -153,6 +152,7 @@ See [`docs/06-Local-Ollama.md`](docs/06-Local-Ollama.md).
 
 ## Documentation
 
+- [Documentation Index](docs/README.md)
 - [Overview](docs/01-Overview.md)
 - [Features](docs/02-Features.md)
 - [Architecture](docs/03-Architecture.md)
@@ -164,6 +164,8 @@ See [`docs/06-Local-Ollama.md`](docs/06-Local-Ollama.md).
 - [Developer Guide](docs/09-Developer-Guide.md)
 - [Troubleshooting](docs/10-Troubleshooting.md)
 - [Roadmap](docs/11-Roadmap.md)
+- [Career Materials](docs/career/README.md)
+- [Release Notes Archive](docs/releases/README.md)
 
 ---
 

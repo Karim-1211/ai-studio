@@ -1,26 +1,31 @@
 # Changelog
 
-## v1.4.0 — Portfolio & Product Release
-
-### Added
-
-- Professional README landing page
-- Documentation center in `docs/`
-- Portfolio project summary
-- Resume-ready project description
-- LinkedIn project description
-- Interview talking points
-- Release notes
-- Validation guide
-- Rollback guide
+## v1.5.0 — Repository Polish
 
 ### Changed
+- Cleaned the repository root for a more professional GitHub presentation.
+- Moved legacy setup and validation documents into `docs/archive/legacy-phase-files/`.
+- Moved release-specific documents into `docs/releases/`.
+- Moved career and portfolio materials into `docs/career/`.
+- Updated README with cleaner documentation links and live demo reference.
 
-- Improved repository presentation for clients, recruiters, and portfolio visitors.
+### Notes
+- No application logic changed.
+- No database migration required.
+- No Render environment changes required.
 
-### Not Changed
+## v1.4.0 — Portfolio Release
 
-- No database migrations
-- No AI provider changes
-- No Render environment changes
-- No application logic changes
+### Added
+- Professional README.
+- Documentation structure.
+- Portfolio summary.
+- Interview guide.
+- Security and contribution documents.
+
+## v1.3.0 — Dual Mode
+
+### Added
+- Cloud Gemini mode.
+- Local Ollama mode.
+- Provider separation.
