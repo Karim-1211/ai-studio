@@ -122,7 +122,7 @@ async function send() {
 
   if (!elements.model.value) {
     alert(
-      "No Ollama generation model is available."
+      "No AI generation model is available. Check your active provider settings."
     );
     return;
   }

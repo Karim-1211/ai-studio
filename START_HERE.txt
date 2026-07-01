@@ -1,0 +1,4 @@
+AI Studio Professional Edition v2.0
+
+Start with INSTALL_PROFESSIONAL_V2_0.md.
+This release improves the streaming chat experience without changing database migrations, Render settings, or the RAG pipeline.
