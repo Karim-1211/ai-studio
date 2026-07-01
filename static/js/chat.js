@@ -18,6 +18,7 @@ import {
 } from "./settings.js";
 
 import { formatBotMessage } from "./markdown.js";
+import { normalizeAssistantText } from "./text_quality.js";
 
 import {
   isQuotaErrorMessage,
@@ -119,6 +120,8 @@ export async function generateNormalResponse(
     }
 
     fullResponse += decoder.decode();
+
+    fullResponse = normalizeAssistantText(fullResponse);
 
     if (!fullResponse.trim()) {
       throw new Error(

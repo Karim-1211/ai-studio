@@ -1,12 +1,15 @@
 import { attachReadAloudButton } from "./voice.js";
+import { normalizeAssistantText } from "./text_quality.js";
 
 export function formatBotMessage(message, markdownText) {
+  const normalizedMarkdownText = normalizeAssistantText(markdownText);
+
   try {
     if (typeof marked !== "undefined") {
-      message.innerHTML = marked.parse(markdownText);
+      message.innerHTML = marked.parse(normalizedMarkdownText);
       message.classList.add("is-formatted");
     } else {
-      message.innerText = markdownText;
+      message.innerText = normalizedMarkdownText;
       return;
     }
 
@@ -15,7 +18,7 @@ export function formatBotMessage(message, markdownText) {
     messageCopyButton.innerText = "Copy Answer";
 
     messageCopyButton.addEventListener("click", async () => {
-      await navigator.clipboard.writeText(markdownText);
+      await navigator.clipboard.writeText(normalizedMarkdownText);
       messageCopyButton.innerText = "Copied!";
 
       setTimeout(() => {
@@ -24,7 +27,7 @@ export function formatBotMessage(message, markdownText) {
     });
 
     message.appendChild(messageCopyButton);
-    attachReadAloudButton(message, markdownText);
+    attachReadAloudButton(message, normalizedMarkdownText);
 
     if (typeof hljs !== "undefined") {
       message.querySelectorAll("pre code").forEach(block => {
@@ -50,6 +53,6 @@ export function formatBotMessage(message, markdownText) {
     }
   } catch (error) {
     console.error("Markdown formatting error:", error);
-    message.innerText = markdownText;
+    message.innerText = normalizedMarkdownText;
   }
 }

@@ -17,6 +17,7 @@ import {
 } from "./settings.js";
 
 import { formatBotMessage } from "./markdown.js";
+import { normalizeAssistantText } from "./text_quality.js";
 
 import {
   applyQuotaGuardToResponseMode,
@@ -77,7 +78,7 @@ export async function generateOptionCards(
     );
 
     const parsedOptions = parseBatchOptions(
-      result.text
+      normalizeAssistantText(result.text)
     );
 
     parsedOptions.forEach(
@@ -86,7 +87,7 @@ export async function generateOptionCards(
 
         renderOptionMarkdown(
           card.content,
-          optionText
+          normalizeAssistantText(optionText)
         );
 
         renderRagSources(
@@ -97,7 +98,7 @@ export async function generateOptionCards(
 
         addOptionActions(
           card,
-          optionText,
+          normalizeAssistantText(optionText),
           result.sources
         );
       }
@@ -251,7 +252,7 @@ function parseBatchOptions(
   text,
   requireAll = true
 ) {
-  const cleaned = String(text || "").trim();
+  const cleaned = normalizeAssistantText(text).trim();
 
   if (!cleaned) {
     return [];
@@ -384,6 +385,8 @@ async function generateSingleOption(
   cardParts.content.classList.remove(
     "option-content-loading"
   );
+
+  fullResponse = normalizeAssistantText(fullResponse);
 
   renderOptionMarkdown(
     cardParts.content,
@@ -541,6 +544,7 @@ function renderOptionMarkdown(
   element,
   text
 ) {
+  text = normalizeAssistantText(text);
   if (
     typeof marked !== "undefined"
     && typeof marked.parse === "function"

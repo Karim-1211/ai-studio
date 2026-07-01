@@ -9,6 +9,7 @@ from database.crud import (
     get_ready_website_chunks
 )
 from services.embedding_service import generate_embedding
+from services.text_quality_service import normalize_source_text
 
 
 DEFAULT_MINIMUM_RELEVANCE = 0.20
@@ -85,7 +86,7 @@ def retrieve_relevant_context(
                 "source_scope": "chat",
                 "filename": chunk.document.original_filename,
                 "chunk_index": chunk.chunk_index,
-                "content": chunk.content
+                "content": normalize_source_text(chunk.content)
             }
         )
 
@@ -101,7 +102,7 @@ def retrieve_relevant_context(
                 "source_scope": "global",
                 "filename": chunk.global_document.original_filename,
                 "chunk_index": chunk.chunk_index,
-                "content": chunk.content
+                "content": normalize_source_text(chunk.content)
             }
         )
 
@@ -118,7 +119,7 @@ def retrieve_relevant_context(
                 "filename": chunk.website_source.title or chunk.website_source.domain,
                 "source_url": chunk.website_source.canonical_url or chunk.website_source.url,
                 "chunk_index": chunk.chunk_index,
-                "content": chunk.content
+                "content": normalize_source_text(chunk.content)
             }
         )
 
@@ -136,7 +137,7 @@ def retrieve_relevant_context(
                 "source_url": chunk.social_source.canonical_url or chunk.social_source.url,
                 "platform": chunk.social_source.platform,
                 "chunk_index": chunk.chunk_index,
-                "content": chunk.content
+                "content": normalize_source_text(chunk.content)
             }
         )
 
@@ -174,7 +175,7 @@ def retrieve_attachment_context(
                 "source_scope": "attachment",
                 "filename": chunk.attachment.original_filename,
                 "chunk_index": chunk.chunk_index,
-                "content": chunk.content
+                "content": normalize_source_text(chunk.content)
             }
         )
 
@@ -228,7 +229,7 @@ def build_rag_prompt(user_prompt, context_items, strict_mode=True):
             source_detail = f"{item['filename']} | Chat document"
 
         context_sections.append(
-            f"[Source {index}: {source_detail}]\n{item['content']}"
+            f"[Source {index}: {source_detail}]\n{normalize_source_text(item.get('content', ''), limit=2500)}"
         )
 
     context_text = "\n\n".join(context_sections)
@@ -255,6 +256,9 @@ Instructions:
 - Cite supporting passages using [Source 1], [Source 2], and so on.
 - Keep each citation attached to the claim it supports.
 - Do not mention hidden retrieval scores or internal chunk IDs.
+- Write in clean, professional Markdown with normal spacing between words.
+- If source text appears to have OCR or website-crawl spacing artifacts, silently repair spacing only; do not change facts.
+- Prefer complete bullet points or complete paragraphs rather than fragments.
 - A source marked Global library is reusable across conversations.
 - A source marked Website is an indexed webpage from the global library.
 - A source marked social source is indexed social-media content.

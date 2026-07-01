@@ -39,6 +39,7 @@ from services.ollama_service import (
     stream_ollama_response,
     get_ollama_models,
 )
+from services.text_quality_service import polish_assistant_text
 
 
 SUPPORTED_PROVIDERS = {"ollama", "openai", "openrouter", "gemini", "anthropic", "claude"}
@@ -336,7 +337,7 @@ def stream_gemini_response(
 
             response.raise_for_status()
             data = response.json()
-            text = extract_gemini_text(data).strip()
+            text = polish_assistant_text(extract_gemini_text(data)).strip()
 
             if not text:
                 finish_reason = extract_gemini_finish_reason(data)
@@ -575,7 +576,13 @@ def resolve_max_tokens(mode, max_tokens):
 def build_prompt(prompt, mode, option_number=None):
     if mode == "options_batch":
         return f"""
-Create exactly three concise answer options for the following request.
+Create exactly three concise, complete answer options for the following request.
+
+Quality requirements:
+- Use clean Markdown and normal spacing between all words.
+- Do not merge words such as "digital marketingagency" or "withdata-driven".
+- Keep citations readable, for example: [Source 1].
+- Each option must be complete and should not stop mid-sentence.
 
 Use this exact format:
 
@@ -608,6 +615,11 @@ Request:
         return f"""
 Answer the following request in a detailed and structured way.
 
+Quality requirements:
+- Use clean Markdown and normal spacing between words.
+- Use complete sentences.
+- If source text has spacing artifacts, repair spacing only and keep facts unchanged.
+
 Include:
 - A clear explanation
 - Relevant examples
@@ -634,7 +646,10 @@ Request:
         return f"""
 Answer the following request accurately, directly, and professionally.
 
-Avoid unnecessary details.
+Quality requirements:
+- Use clean Markdown and normal spacing between words.
+- Use complete sentences.
+- Avoid unnecessary details.
 
 Request:
 
@@ -645,12 +660,25 @@ Request:
         return f"""
 Give a concise and direct answer to the following request.
 
+Use clean Markdown and normal spacing between words.
+
 Request:
 
 {prompt}
 """.strip()
 
-    return prompt
+    return f"""
+Answer the following request clearly and professionally.
+
+Quality requirements:
+- Use clean Markdown and normal spacing between words.
+- Use complete sentences.
+- If source text has spacing artifacts, repair spacing only and keep facts unchanged.
+
+Request:
+
+{prompt}
+""".strip()
 
 
 def read_error_detail(response):
