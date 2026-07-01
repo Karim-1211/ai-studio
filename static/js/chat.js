@@ -44,8 +44,6 @@ export async function generateNormalResponse(
     "bot loading"
   );
 
-  let fullResponse = "";
-
   try {
     const activeChat = getActiveChat();
 
@@ -92,11 +90,9 @@ export async function generateNormalResponse(
     const reader = response.body.getReader();
     const decoder = new TextDecoder();
 
-    while (true) {
-      if (controller.signal.aborted) {
-        break;
-      }
+    let fullResponse = "";
 
+    while (true) {
       const result = await reader.read();
 
       if (result.done) {
@@ -118,10 +114,6 @@ export async function generateNormalResponse(
     }
 
     fullResponse += decoder.decode();
-
-    if (controller.signal.aborted && fullResponse.trim()) {
-      fullResponse = `${fullResponse.trim()}\n\n[Generation stopped]`;
-    }
 
     if (!fullResponse.trim()) {
       throw new Error(
@@ -162,31 +154,6 @@ export async function generateNormalResponse(
       elements.chat.scrollHeight;
 
   } catch (error) {
-    if (error.name === "AbortError" && fullResponse.trim()) {
-      fullResponse = `${fullResponse.trim()}\n\n[Generation stopped]`;
-
-      formatBotMessage(
-        botMessage,
-        fullResponse
-      );
-
-      const savedBotMessage = await saveMessage(
-        "bot",
-        fullResponse
-      );
-
-      attachMessageActions(
-        botMessage,
-        savedBotMessage,
-        getActiveChat(),
-        async (branch, draftText) => {
-          await openChatById(branch.id, draftText);
-        }
-      );
-
-      return;
-    }
-
     handleChatError(
       error,
       botMessage
