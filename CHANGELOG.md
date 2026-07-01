@@ -1,4 +1,13 @@
 
+## AI Studio Dual Mode v1.3
+
+- Added documented local Ollama mode using `.env.local.example`.
+- Added cloud Gemini reference configuration using `.env.cloud.example`.
+- Added beginner-safe local Ollama setup guide.
+- Kept Render/Gemini production mode isolated from local development.
+- No database migration required.
+
+
 ## Phase 4.1 - Multi-provider portfolio demo
 
 - Added AI provider support for Ollama, OpenAI, OpenRouter, Gemini, and Anthropic.

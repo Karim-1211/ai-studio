@@ -436,3 +436,13 @@ AI Studio now supports a flexible provider layer:
 
 For the public Render portfolio demo, the recommended setting is `AI_PROVIDER=gemini` with `GEMINI_API_KEY`. Ollama remains available locally. See `docs/AI_PROVIDERS.md` for full configuration details.
 
+
+
+## Dual Mode
+
+AI Studio supports two safe execution modes:
+
+- **Cloud Mode:** Gemini + Gemini embeddings + Neon PostgreSQL + Render.
+- **Local Mode:** Ollama + Ollama embeddings + local database.
+
+Use `.env.cloud.example` as the Render reference and `.env.local.example` for local Ollama testing. Render does not read your local `.env`, so local Ollama testing does not affect the live Gemini deployment.
