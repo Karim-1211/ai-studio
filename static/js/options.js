@@ -49,72 +49,230 @@ export async function generateOptionCards(
       )
   );
 
-  const generatedOptions = [];
+  try {
+    const result = await generateBatchOptions(
+      prompt,
+      cards,
+      controller,
+      attachmentIds
+    );
 
-  for (
-    let index = 0;
-    index < cards.length;
-    index += 1
-  ) {
-    if (controller.signal.aborted) {
-      cards[index].content.innerText =
-        "[Generation stopped]";
+    const parsedOptions = parseBatchOptions(
+      result.text
+    );
 
-      break;
-    }
+    parsedOptions.forEach(
+      (optionText, index) => {
+        const card = cards[index];
 
-    try {
-      const result =
-        await generateSingleOption(
-          prompt,
-          index + 1,
-          cards[index],
-          controller,
-          attachmentIds
+        renderOptionMarkdown(
+          card.content,
+          optionText
         );
 
-      if (result.text) {
-        generatedOptions.push(result.text);
+        renderRagSources(
+          card.card,
+          result.sources,
+          true
+        );
 
         addOptionActions(
-          cards[index],
-          result.text,
+          card,
+          optionText,
           result.sources
         );
       }
+    );
 
-    } catch (error) {
-      if (error.name === "AbortError") {
-        cards[index].content.innerText =
-          "[Generation stopped]";
+    if (parsedOptions.length > 0) {
+      saveOptions(parsedOptions);
+    }
 
-        break;
-      }
+  } catch (error) {
+    const safeMessage = error.name === "AbortError"
+      ? "[Generation stopped]"
+      : (
+          error.message ||
+          "The options could not be generated."
+        );
 
-      console.error(
-        `Option ${index + 1} error:`,
-        error
-      );
-
-      cards[index].card.classList.add(
+    cards.forEach(card => {
+      card.card.classList.add(
         "option-card-error"
       );
-
-      cards[index].badge.innerText =
-        "Failed";
-
-      cards[index].content.innerText =
-        error.message ||
-        "This option could not be generated.";
-    }
-  }
-
-  if (generatedOptions.length > 0) {
-    saveOptions(generatedOptions);
+      card.badge.innerText = "Failed";
+      card.content.innerText = safeMessage;
+    });
   }
 
   elements.chat.scrollTop =
     elements.chat.scrollHeight;
+}
+
+
+async function generateBatchOptions(
+  prompt,
+  cards,
+  controller,
+  attachmentIds = []
+) {
+  const activeChat = getActiveChat();
+
+  const documentSettings =
+    getDocumentRequestSettings();
+
+  const generationSettings =
+    getGenerationSettings();
+
+  const response = await sendChatRequest(
+    {
+      prompt,
+      model: elements.model.value,
+      mode: "options_batch",
+      chat_id: activeChat?.id ?? null,
+      attachment_ids: attachmentIds,
+      ...generationSettings,
+      ...documentSettings
+    },
+    controller.signal
+  );
+
+  if (!response.ok) {
+    const errorText = await response.text();
+
+    throw new Error(
+      errorText ||
+      `Option request failed with status ${response.status}.`
+    );
+  }
+
+  if (!response.body) {
+    throw new Error(
+      "The server returned an empty option stream."
+    );
+  }
+
+  const ragSources =
+    readRagSourcesFromResponse(response);
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+
+  let fullResponse = "";
+
+  cards.forEach(card => {
+    card.content.classList.add(
+      "option-content-loading"
+    );
+    card.content.innerText =
+      "Generating comparison options...";
+  });
+
+  while (true) {
+    const result = await reader.read();
+
+    if (result.done) {
+      break;
+    }
+
+    fullResponse += decoder.decode(
+      result.value,
+      { stream: true }
+    );
+
+    const previewOptions = parseBatchOptions(
+      fullResponse,
+      false
+    );
+
+    previewOptions.forEach(
+      (optionText, index) => {
+        if (cards[index]) {
+          cards[index].content.innerText =
+            `${optionText} ▋`;
+        }
+      }
+    );
+
+    elements.chat.scrollTop =
+      elements.chat.scrollHeight;
+  }
+
+  fullResponse += decoder.decode();
+
+  cards.forEach(card => {
+    card.content.classList.remove(
+      "option-content-loading"
+    );
+  });
+
+  if (!fullResponse.trim()) {
+    throw new Error(
+      "The model returned an empty options response."
+    );
+  }
+
+  return {
+    text: fullResponse.trim(),
+    sources: ragSources
+  };
+}
+
+
+function parseBatchOptions(
+  text,
+  requireAll = true
+) {
+  const cleaned = String(text || "").trim();
+
+  if (!cleaned) {
+    return [];
+  }
+
+  const matches = [...cleaned.matchAll(
+    /(?:^|\n)#{1,3}\s*Option\s*(\d)\s*\n([\s\S]*?)(?=(?:\n#{1,3}\s*Option\s*\d\s*\n)|$)/gi
+  )];
+
+  let options = matches
+    .sort((a, b) => Number(a[1]) - Number(b[1]))
+    .map(match => match[2].trim())
+    .filter(Boolean)
+    .slice(0, 3);
+
+  if (
+    options.length === 0 &&
+    cleaned.includes("Option 1")
+  ) {
+    options = cleaned
+      .split(/Option\s*\d\s*:?/i)
+      .map(part => part.trim())
+      .filter(Boolean)
+      .slice(0, 3);
+  }
+
+  if (
+    options.length === 0 &&
+    !requireAll
+  ) {
+    return [cleaned];
+  }
+
+  if (
+    requireAll &&
+    options.length < 3
+  ) {
+    const fallbackChunks = cleaned
+      .split(/\n\s*---\s*\n|\n\s*\*\*Option\s*\d\*\*\s*\n/i)
+      .map(part => part.trim())
+      .filter(Boolean)
+      .slice(0, 3);
+
+    if (fallbackChunks.length > options.length) {
+      options = fallbackChunks;
+    }
+  }
+
+  return options.slice(0, 3);
 }
 
 

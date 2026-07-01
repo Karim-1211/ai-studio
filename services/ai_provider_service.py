@@ -11,6 +11,7 @@ Supported providers:
 import base64
 import json
 import mimetypes
+import time
 
 import requests
 
@@ -274,6 +275,15 @@ def stream_gemini_response(
     top_p=None,
     image_paths=None,
 ):
+    """Generate a Gemini response safely for the cloud deployment.
+
+    This intentionally uses Gemini's non-streaming generateContent endpoint and
+    then yields the final text in small chunks. The earlier streaming endpoint
+    caused truncated answers and exposed full request URLs in browser-visible
+    error messages when quota errors occurred. This stable path prioritizes
+    complete answers and safe error handling. True provider streaming can be
+    reintroduced behind a feature flag after separate validation.
+    """
     if not GEMINI_API_KEY:
         yield "\n\nError: GEMINI_API_KEY is not configured."
         return
@@ -298,44 +308,67 @@ def stream_gemini_response(
 
     url = (
         f"{GEMINI_BASE_URL.rstrip('/')}/models/"
-        f"{selected_model}:streamGenerateContent?alt=sse&key={GEMINI_API_KEY}"
+        f"{selected_model}:generateContent?key={GEMINI_API_KEY}"
     )
 
-    try:
-        with requests.post(
-            url,
-            headers={"Content-Type": "application/json"},
-            json=payload,
-            stream=True,
-            timeout=(10, 600),
-        ) as response:
-            response.raise_for_status()
-            for raw_line in response.iter_lines(decode_unicode=True):
-                if not raw_line:
-                    continue
-                line = raw_line.strip()
-                if not line.startswith("data:"):
-                    continue
-                data = line.removeprefix("data:").strip()
-                try:
-                    chunk = json.loads(data)
-                except json.JSONDecodeError:
-                    continue
-                text = extract_gemini_text(chunk)
-                if text:
-                    yield text
-    except requests.Timeout:
-        yield "\n\nError: Gemini took too long to respond."
-    except requests.ConnectionError:
-        yield "\n\nError: Could not connect to Gemini."
-    except requests.HTTPError as error:
-        detail = read_error_detail(error.response)
-        yield f"\n\nError from Gemini: {detail or error}"
-    except requests.RequestException as error:
-        yield f"\n\nError communicating with Gemini: {error}"
-    except Exception as error:
-        yield f"\n\nError: {error}"
+    last_error_message = ""
 
+    for attempt in range(3):
+        try:
+            response = requests.post(
+                url,
+                headers={"Content-Type": "application/json"},
+                json=payload,
+                timeout=(10, 600),
+            )
+
+            if response.status_code == 429:
+                last_error_message = (
+                    "Gemini rate limit reached. Please wait a minute and try again. "
+                    "For comparison mode, use Single Answer when testing quickly."
+                )
+                if attempt < 2:
+                    time.sleep(2 + attempt * 3)
+                    continue
+
+            response.raise_for_status()
+            data = response.json()
+            text = extract_gemini_text(data).strip()
+
+            if not text:
+                finish_reason = extract_gemini_finish_reason(data)
+                if finish_reason:
+                    yield f"\n\nError from Gemini: no text was returned. Finish reason: {finish_reason}."
+                else:
+                    yield "\n\nError from Gemini: no text was returned."
+                return
+
+            yield from yield_text_progressively(text)
+            return
+
+        except requests.Timeout:
+            last_error_message = "Gemini took too long to respond."
+        except requests.ConnectionError:
+            last_error_message = "Could not connect to Gemini."
+        except requests.HTTPError as error:
+            status_code = getattr(error.response, "status_code", None)
+            if status_code == 429:
+                last_error_message = (
+                    "Gemini rate limit reached. Please wait a minute and try again. "
+                    "For comparison mode, use Single Answer when testing quickly."
+                )
+            else:
+                detail = read_error_detail(error.response)
+                last_error_message = detail or f"Gemini request failed with status {status_code}."
+        except requests.RequestException:
+            last_error_message = "Gemini request failed. Please try again."
+        except Exception as error:
+            last_error_message = str(error)
+
+        if attempt < 2:
+            time.sleep(1 + attempt * 2)
+
+    yield f"\n\nError from Gemini: {sanitize_provider_error(last_error_message)}"
 
 def stream_anthropic_response(
     model,
@@ -478,6 +511,44 @@ def extract_gemini_text(chunk):
     return "".join(text_parts)
 
 
+def extract_gemini_finish_reason(chunk):
+    for candidate in chunk.get("candidates", []):
+        reason = candidate.get("finishReason")
+        if reason:
+            return str(reason)
+    return ""
+
+
+def yield_text_progressively(text, chunk_size=36):
+    """Yield text in small, readable chunks without splitting words badly."""
+    words = str(text).split(" ")
+    buffer = ""
+
+    for word in words:
+        next_piece = word if not buffer else f" {word}"
+        if len(buffer) + len(next_piece) >= chunk_size:
+            if buffer:
+                yield buffer
+            buffer = word
+        else:
+            buffer += next_piece
+
+    if buffer:
+        yield buffer
+
+
+def sanitize_provider_error(message):
+    cleaned = str(message or "").strip()
+    if not cleaned:
+        return "The provider returned an error."
+
+    # Never expose provider URLs or API keys in browser-visible errors.
+    if "generativelanguage.googleapis.com" in cleaned or "key=" in cleaned:
+        return "Gemini request failed. Please try again shortly."
+
+    return cleaned[:500]
+
+
 def resolve_temperature(mode, temperature):
     if temperature is not None:
         return float(temperature)
@@ -499,6 +570,28 @@ def resolve_max_tokens(mode, max_tokens):
 
 
 def build_prompt(prompt, mode, option_number=None):
+    if mode == "options_batch":
+        return f"""
+Create exactly three different high-quality answer options for the following request.
+
+Use this exact format so the application can split the options:
+
+### Option 1
+<first complete answer>
+
+### Option 2
+<second complete answer>
+
+### Option 3
+<third complete answer>
+
+Each option must be complete, useful, and meaningfully different.
+
+Request:
+
+{prompt}
+""".strip()
+
     if mode == "options":
         return f"""
 Create option {option_number} for the following request.

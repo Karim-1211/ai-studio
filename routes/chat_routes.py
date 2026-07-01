@@ -50,6 +50,7 @@ chat_routes = Blueprint(
 VALID_MODES = {
     "single",
     "options",
+    "options_batch",
     "detailed",
     "creative",
     "precise",
