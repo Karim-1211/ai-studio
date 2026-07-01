@@ -301,6 +301,9 @@ def stream_gemini_response(
         payload["systemInstruction"] = {"parts": [{"text": str(system_prompt)}]}
 
     resolved_max_tokens = resolve_max_tokens(mode, max_tokens)
+    if mode == "options_batch":
+        if resolved_max_tokens is None or resolved_max_tokens > 900:
+            resolved_max_tokens = 900
     if resolved_max_tokens is not None:
         payload["generationConfig"]["maxOutputTokens"] = resolved_max_tokens
     if top_p is not None:
@@ -572,20 +575,18 @@ def resolve_max_tokens(mode, max_tokens):
 def build_prompt(prompt, mode, option_number=None):
     if mode == "options_batch":
         return f"""
-Create exactly three different high-quality answer options for the following request.
+Create exactly three concise answer options for the following request.
 
-Use this exact format so the application can split the options:
+Use this exact format:
 
 ### Option 1
-<first complete answer>
+<complete answer, max 120 words>
 
 ### Option 2
-<second complete answer>
+<complete answer, max 120 words>
 
 ### Option 3
-<third complete answer>
-
-Each option must be complete, useful, and meaningfully different.
+<complete answer, max 120 words>
 
 Request:
 

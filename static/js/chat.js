@@ -20,6 +20,11 @@ import {
 import { formatBotMessage } from "./markdown.js";
 
 import {
+  isQuotaErrorMessage,
+  startQuotaCooldown
+} from "./quota_guard.js";
+
+import {
   getActiveChat,
   openChatById,
   saveMessage
@@ -154,6 +159,14 @@ export async function generateNormalResponse(
       elements.chat.scrollHeight;
 
   } catch (error) {
+    if (isQuotaErrorMessage(error?.message)) {
+      startQuotaCooldown();
+      error.message = (
+        "Gemini is temporarily rate-limited. Please wait 1–2 minutes, " +
+        "then try Single Answer again. Avoid repeated 3 Options requests on the free tier."
+      );
+    }
+
     handleChatError(
       error,
       botMessage

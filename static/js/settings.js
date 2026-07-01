@@ -1,6 +1,10 @@
 import { fetchModels } from "./api.js";
 import { elements } from "./ui.js";
 
+import {
+  applyQuotaGuardToResponseMode
+} from "./quota_guard.js";
+
 
 const STORAGE_KEY = "aiStudioSettingsV2";
 
@@ -31,6 +35,7 @@ export function initializeSettings() {
   const settings = readStoredSettings();
 
   applySettingsToControls(settings);
+  applyQuotaGuardToResponseMode(elements.responseMode);
   applyTheme(settings.theme);
   updateSystemPromptCount();
 

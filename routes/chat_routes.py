@@ -562,6 +562,12 @@ def chat():
         )
 
     if context_items:
+        # Quota guard: comparison mode is intentionally lighter on RAG context.
+        # This reduces Gemini token pressure and helps avoid 429 rate limits on
+        # free-tier API keys while preserving the most relevant sources.
+        if mode == "options_batch":
+            context_items = context_items[:3]
+
         final_prompt = build_rag_prompt(
             user_prompt=prompt,
             context_items=context_items,

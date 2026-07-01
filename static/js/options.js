@@ -19,6 +19,14 @@ import {
 import { formatBotMessage } from "./markdown.js";
 
 import {
+  applyQuotaGuardToResponseMode,
+  getQuotaCooldownMessage,
+  getQuotaCooldownRemainingMs,
+  isQuotaErrorMessage,
+  startQuotaCooldown
+} from "./quota_guard.js";
+
+import {
   getActiveChat,
   saveMessage,
   saveOptions
@@ -48,6 +56,17 @@ export async function generateOptionCards(
         optionNumber
       )
   );
+
+  if (getQuotaCooldownRemainingMs() > 0) {
+    const message = getQuotaCooldownMessage();
+    cards.forEach(card => {
+      card.card.classList.add("option-card-error");
+      card.badge.innerText = "Cooldown";
+      card.content.innerText = message;
+    });
+    applyQuotaGuardToResponseMode(elements.responseMode);
+    return;
+  }
 
   try {
     const result = await generateBatchOptions(
@@ -89,11 +108,20 @@ export async function generateOptionCards(
     }
 
   } catch (error) {
+    if (isQuotaErrorMessage(error?.message)) {
+      startQuotaCooldown();
+      applyQuotaGuardToResponseMode(elements.responseMode);
+    }
+
     const safeMessage = error.name === "AbortError"
       ? "[Generation stopped]"
       : (
-          error.message ||
-          "The options could not be generated."
+          isQuotaErrorMessage(error?.message)
+            ? getQuotaCooldownMessage()
+            : (
+                error.message ||
+                "The options could not be generated."
+              )
         );
 
     cards.forEach(card => {
