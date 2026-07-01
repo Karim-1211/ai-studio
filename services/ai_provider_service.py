@@ -9,8 +9,10 @@ Supported providers:
 """
 
 import base64
+import hashlib
 import json
 import mimetypes
+import threading
 import time
 
 import requests
@@ -44,6 +46,16 @@ from services.text_quality_service import polish_assistant_text
 
 SUPPORTED_PROVIDERS = {"ollama", "openai", "openrouter", "gemini", "anthropic", "claude"}
 OPENAI_COMPATIBLE_PROVIDERS = {"openai", "openrouter"}
+
+# Small in-memory cache for identical Gemini requests in the same Render process.
+# This protects the free Gemini quota during repeated testing and does not store
+# user data outside the running process. Render may clear this on restart.
+_GEMINI_RESPONSE_CACHE = {}
+_GEMINI_CACHE_LOCK = threading.Lock()
+_GEMINI_CACHE_TTL_SECONDS = 600
+_GEMINI_MAX_CACHE_ITEMS = 80
+_GEMINI_RETRY_DELAYS = (2, 5, 10)
+
 
 
 def get_ai_provider():
@@ -276,14 +288,18 @@ def stream_gemini_response(
     top_p=None,
     image_paths=None,
 ):
-    """Generate a Gemini response safely for the cloud deployment.
+    """Generate a Gemini response with quota-safe reliability behavior.
 
-    This intentionally uses Gemini's non-streaming generateContent endpoint and
-    then yields the final text in small chunks. The earlier streaming endpoint
-    caused truncated answers and exposed full request URLs in browser-visible
-    error messages when quota errors occurred. This stable path prioritizes
-    complete answers and safe error handling. True provider streaming can be
-    reintroduced behind a feature flag after separate validation.
+    v2.2 intentionally keeps Gemini on generateContent instead of the unstable
+    streaming endpoint. It yields the finished text progressively after a
+    complete provider response is received. This prevents partial/truncated
+    answers while still giving a readable typing effect in the UI.
+
+    Reliability improvements:
+    - short-lived response cache for identical repeated prompts
+    - exponential backoff for temporary quota/network issues
+    - fallback model attempts when configured models are available
+    - sanitized user-visible errors with no provider URL or API key exposure
     """
     if not GEMINI_API_KEY:
         yield "\n\nError: GEMINI_API_KEY is not configured."
@@ -291,88 +307,224 @@ def stream_gemini_response(
 
     selected_model = str(model or "").strip() or GEMINI_MODEL
     final_prompt = build_prompt(prompt, mode, option_number)
+    resolved_max_tokens = resolve_gemini_max_tokens(mode, max_tokens)
 
-    payload = {
+    cache_key = build_gemini_cache_key(
+        model=selected_model,
+        prompt=final_prompt,
+        system_prompt=system_prompt,
+        temperature=temperature,
+        max_tokens=resolved_max_tokens,
+        top_p=top_p,
+        image_paths=image_paths,
+    )
+
+    cached_text = get_cached_gemini_response(cache_key)
+    if cached_text:
+        yield from yield_text_progressively(cached_text)
+        return
+
+    payload_template = {
         "contents": build_gemini_contents(final_prompt, image_paths),
         "generationConfig": {
             "temperature": resolve_temperature(mode, temperature),
         },
     }
+
     if system_prompt:
-        payload["systemInstruction"] = {"parts": [{"text": str(system_prompt)}]}
+        payload_template["systemInstruction"] = {
+            "parts": [{"text": str(system_prompt)}]
+        }
 
-    resolved_max_tokens = resolve_max_tokens(mode, max_tokens)
-    if mode == "options_batch":
-        if resolved_max_tokens is None or resolved_max_tokens > 900:
-            resolved_max_tokens = 900
     if resolved_max_tokens is not None:
-        payload["generationConfig"]["maxOutputTokens"] = resolved_max_tokens
+        payload_template["generationConfig"]["maxOutputTokens"] = resolved_max_tokens
     if top_p is not None:
-        payload["generationConfig"]["topP"] = float(top_p)
-
-    url = (
-        f"{GEMINI_BASE_URL.rstrip('/')}/models/"
-        f"{selected_model}:generateContent?key={GEMINI_API_KEY}"
-    )
+        payload_template["generationConfig"]["topP"] = float(top_p)
 
     last_error_message = ""
+    rate_limited = False
 
-    for attempt in range(3):
-        try:
-            response = requests.post(
-                url,
-                headers={"Content-Type": "application/json"},
-                json=payload,
-                timeout=(10, 600),
-            )
+    for candidate_model in get_gemini_fallback_models(selected_model):
+        url = build_gemini_generate_url(candidate_model)
 
-            if response.status_code == 429:
-                last_error_message = (
-                    "Gemini rate limit reached. Please wait a minute and try again. "
-                    "For comparison mode, use Single Answer when testing quickly."
+        for attempt, delay in enumerate(_GEMINI_RETRY_DELAYS, start=1):
+            try:
+                response = requests.post(
+                    url,
+                    headers={"Content-Type": "application/json"},
+                    json=payload_template,
+                    timeout=(10, 600),
                 )
-                if attempt < 2:
-                    time.sleep(2 + attempt * 3)
-                    continue
 
-            response.raise_for_status()
-            data = response.json()
-            text = polish_assistant_text(extract_gemini_text(data)).strip()
+                if response.status_code == 429:
+                    rate_limited = True
+                    last_error_message = build_quota_message(candidate_model)
+                    if attempt < len(_GEMINI_RETRY_DELAYS):
+                        time.sleep(delay)
+                        continue
+                    break
 
-            if not text:
-                finish_reason = extract_gemini_finish_reason(data)
-                if finish_reason:
-                    yield f"\n\nError from Gemini: no text was returned. Finish reason: {finish_reason}."
-                else:
-                    yield "\n\nError from Gemini: no text was returned."
+                response.raise_for_status()
+                data = response.json()
+                text = polish_assistant_text(extract_gemini_text(data)).strip()
+
+                if not text:
+                    finish_reason = extract_gemini_finish_reason(data)
+                    if finish_reason:
+                        last_error_message = (
+                            "Gemini returned no text. "
+                            f"Finish reason: {finish_reason}."
+                        )
+                    else:
+                        last_error_message = "Gemini returned no text."
+                    break
+
+                set_cached_gemini_response(cache_key, text)
+                yield from yield_text_progressively(text)
                 return
 
-            yield from yield_text_progressively(text)
-            return
+            except requests.Timeout:
+                last_error_message = "Gemini took too long to respond."
+            except requests.ConnectionError:
+                last_error_message = "Could not connect to Gemini."
+            except requests.HTTPError as error:
+                status_code = getattr(error.response, "status_code", None)
+                if status_code == 429:
+                    rate_limited = True
+                    last_error_message = build_quota_message(candidate_model)
+                else:
+                    detail = read_error_detail(error.response)
+                    last_error_message = (
+                        detail
+                        or f"Gemini request failed with status {status_code}."
+                    )
+            except requests.RequestException:
+                last_error_message = "Gemini request failed. Please try again."
+            except Exception as error:
+                last_error_message = str(error)
 
-        except requests.Timeout:
-            last_error_message = "Gemini took too long to respond."
-        except requests.ConnectionError:
-            last_error_message = "Could not connect to Gemini."
-        except requests.HTTPError as error:
-            status_code = getattr(error.response, "status_code", None)
-            if status_code == 429:
-                last_error_message = (
-                    "Gemini rate limit reached. Please wait a minute and try again. "
-                    "For comparison mode, use Single Answer when testing quickly."
-                )
-            else:
-                detail = read_error_detail(error.response)
-                last_error_message = detail or f"Gemini request failed with status {status_code}."
-        except requests.RequestException:
-            last_error_message = "Gemini request failed. Please try again."
-        except Exception as error:
-            last_error_message = str(error)
+            if attempt < len(_GEMINI_RETRY_DELAYS):
+                time.sleep(delay)
 
-        if attempt < 2:
-            time.sleep(1 + attempt * 2)
+    if rate_limited:
+        yield (
+            "\n\nError from Gemini: Gemini rate limit reached. "
+            "Please wait 2-5 minutes before trying again. "
+            "Use Single Answer and turn off knowledge when testing simple chat. "
+            "AI Studio has already retried safely and hidden provider details."
+        )
+        return
 
     yield f"\n\nError from Gemini: {sanitize_provider_error(last_error_message)}"
+
+
+def build_gemini_generate_url(model_name):
+    safe_model = str(model_name or GEMINI_MODEL).strip() or GEMINI_MODEL
+    return (
+        f"{GEMINI_BASE_URL.rstrip('/')}/models/"
+        f"{safe_model}:generateContent?key={GEMINI_API_KEY}"
+    )
+
+
+def get_gemini_fallback_models(selected_model):
+    models = []
+
+    def add(value):
+        cleaned = str(value or "").strip()
+        if cleaned and cleaned not in models:
+            models.append(cleaned)
+
+    add(selected_model)
+    add(GEMINI_MODEL)
+
+    for configured_model in GEMINI_MODELS:
+        add(configured_model)
+
+    # Safe public fallbacks commonly available in Gemini API projects.
+    # They are only attempted after the selected/configured model fails.
+    add("gemini-1.5-flash")
+    add("gemini-2.0-flash")
+
+    return models
+
+
+def resolve_gemini_max_tokens(mode, max_tokens):
+    resolved = resolve_max_tokens(mode, max_tokens)
+
+    if mode == "options_batch":
+        if resolved is None or resolved > 850:
+            return 850
+
+    if mode == "options":
+        if resolved is None or resolved > 450:
+            return 450
+
+    if resolved is not None:
+        return int(resolved)
+
+    return None
+
+
+def build_gemini_cache_key(
+    model,
+    prompt,
+    system_prompt="",
+    temperature=None,
+    max_tokens=None,
+    top_p=None,
+    image_paths=None,
+):
+    image_fingerprint = ",".join(
+        str(path) for path in (image_paths or [])
+    )
+    raw = "\n".join([
+        str(model or ""),
+        str(prompt or ""),
+        str(system_prompt or ""),
+        str(temperature or ""),
+        str(max_tokens or ""),
+        str(top_p or ""),
+        image_fingerprint,
+    ])
+    return hashlib.sha256(raw.encode("utf-8", errors="ignore")).hexdigest()
+
+
+def get_cached_gemini_response(cache_key):
+    now = time.time()
+    with _GEMINI_CACHE_LOCK:
+        item = _GEMINI_RESPONSE_CACHE.get(cache_key)
+        if not item:
+            return ""
+
+        created_at, text = item
+        if now - created_at > _GEMINI_CACHE_TTL_SECONDS:
+            _GEMINI_RESPONSE_CACHE.pop(cache_key, None)
+            return ""
+
+        return text
+
+
+def set_cached_gemini_response(cache_key, text):
+    if not text:
+        return
+
+    with _GEMINI_CACHE_LOCK:
+        if len(_GEMINI_RESPONSE_CACHE) >= _GEMINI_MAX_CACHE_ITEMS:
+            oldest_key = min(
+                _GEMINI_RESPONSE_CACHE,
+                key=lambda key: _GEMINI_RESPONSE_CACHE[key][0],
+            )
+            _GEMINI_RESPONSE_CACHE.pop(oldest_key, None)
+
+        _GEMINI_RESPONSE_CACHE[cache_key] = (time.time(), text)
+
+
+def build_quota_message(model_name):
+    return (
+        f"Gemini rate limit reached while using {model_name}. "
+        "AI Studio will retry safely and fall back when possible."
+    )
+
 
 def stream_anthropic_response(
     model,
